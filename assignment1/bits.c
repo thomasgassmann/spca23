@@ -248,7 +248,8 @@ int fitsBits(int x, int n) {
  *   Rating: 2
  */
 int anyEvenBit(int x) {
-  return 2;
+  int mask = 0x55; // 01010101 in binary
+  return !!((mask & x) | ((mask << 8) & x) | ((mask << 16) & x) | ((mask << 24) & x));
 }
 /*
  * bitCount - returns count of number of 1's in word
