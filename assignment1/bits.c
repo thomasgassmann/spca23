@@ -231,16 +231,13 @@ int getByte(int x, int n) {
  *   Rating: 2
  */
 int fitsBits(int x, int n) {
-  /** 
-   * if positive: when x & (n - 1 least significant bits one) == x
-   * if negative: when x & (32 - n most significant bits one) == x
-   * 
-   * 32 - n most significnat bits either 0 or 1
-  */
-  int ones = ((unsigned int)-1) >> (33 + ~(n - 1)); // n-1 least significant bits set to 1
-  int positiveCase = isEqual(x & ones, x);
-  printf("%x\n", ones);
-  return isEqual(x & ones, x);
+  // 32 - n
+  int shift = 32 + (~n + 1);
+  // clears out top 32 - n bits and replaces them with bit at index n - 1
+  int mask = (x << shift) >> shift;
+  // return 1 if x equals mask, i.e. if twos complement of x equals twos
+  // complement of mask (this means the << shift did not remove any information)
+  return !(x ^ mask);
 }
 /* 
  * anyEvenBit - return 1 if any even-numbered bit in word set to 1
