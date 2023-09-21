@@ -343,7 +343,11 @@ int isNonNegative(int x) {
  *   Rating: 3
  */
 int isGreater(int x, int y) {
-  return 2;
+  int diff = x + (~y + 1);  // Calculate the difference between x and y
+  int signX = (x >> 31) & 1; // Extract the sign bit of x
+  int signY = (y >> 31) & 1; // Extract the sign bit of y
+  int sameSign = !(signX ^ signY); // Check if x and y have the same sign
+  return (sameSign & !((diff >> 31) & 1) & !!(diff ^ 0)) | (!sameSign & !signX);
 }
 /*
  * multFiveEighths - multiplies by 5/8 rounding toward 0.
