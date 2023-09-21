@@ -274,13 +274,11 @@ int bitCount(int x) {
  *   Rating: 4 
  */
 int bang(int x) {
-  x = (x >> 16) | x;
-  x = (x >> 8) | x;
-  x = (x >> 4) | x;
-  x = (x >> 2) | x;
-  x = (x >> 1) | x;
-  // now LSB is 1 if any bit is 1, i.e. LSB = 1 iff. x !== 0
-  return ~x & 0x1; // LSB = 1 iff. x == 0
+  /*
+   * x == 0 => x | -x has 0 sign bit, >> 31 gets 0x00000000, +1 gives 1
+   * x != 0 => x | -x has 1 sign bit, >> 31 gets 0xFFFFFFFF, +1 gives 0
+   */
+  return ((x | (~x + 1)) >> 31) + 1;
 }
 /* 
  * leastBitPos - return a mask that marks the position of the
