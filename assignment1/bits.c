@@ -259,7 +259,19 @@ int anyEvenBit(int x) {
  *   Rating: 4
  */
 int bitCount(int x) {
-  return 2;
+  // https://books.google.ch/books?id=iBNKMspIlqEC&pg=PA66&redir_esc=y#v=onepage&q&f=false
+  int ones = 0x55 | (0x55 << 8) | (0x55 << 16) | (0x55 << 24);
+  int twos = 0x33 | (0x33 << 8) | (0x33 << 16) | (0x33 << 24);
+  int fours = 0x0F | (0x0F << 8) | (0x0F << 16) | (0x0F << 24);
+  int eights = 0xFF | (0xFF << 16);
+  int sixteens = 0xFF | (0xFF << 8);
+
+  x = (x & ones) + ((x >> 1) & ones);
+  x = (x & twos) + ((x >> 2) & twos);
+  x = (x + (x >> 4)) & fours;
+  x = (x + (x >> 8)) & eights;
+  x = (x + (x >> 16)) & sixteens;
+  return x;
 }
 /* 
  * bang - Compute !x without using !
@@ -269,7 +281,13 @@ int bitCount(int x) {
  *   Rating: 4 
  */
 int bang(int x) {
-  return 2;
+  x = (x >> 16) | x;
+  x = (x >> 8) | x;
+  x = (x >> 4) | x;
+  x = (x >> 2) | x;
+  x = (x >> 1) | x;
+  // now LSB is 1 if any bit is 1, i.e. LSB = 1 iff. x !== 0
+  return ~x & 0x1; // LSB = 1 iff. x == 0
 }
 /* 
  * leastBitPos - return a mask that marks the position of the
@@ -280,7 +298,8 @@ int bang(int x) {
  *   Rating: 2 
  */
 int leastBitPos(int x) {
-  return 2;
+  // https://stackoverflow.com/a/15395548/13445631
+  return x & (~x + 1);
 }
 /* * * * * * * * * * * * * * * * * * * *
  * Part II: Two's Complement Arithmetic *
