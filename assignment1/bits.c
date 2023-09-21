@@ -361,7 +361,11 @@ int isGreater(int x, int y) {
  *   Rating: 3
  */
 int multFiveEighths(int x) {
-  return 2;
+  int dividedBy8 = x >> 3;
+  int remainder = x & 7;
+  int z = x >> 31 & 7; // 0 for positive number, 7 for negative number
+
+  return dividedBy8 + (dividedBy8 << 2) + ((remainder + (remainder << 2) + z) >> 3);
 }
 /* 
  * rotateLeft - Rotate x to the left by n
