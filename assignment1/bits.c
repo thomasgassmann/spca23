@@ -311,7 +311,7 @@ int leastBitPos(int x) {
  *   Rating: 1
  */
 int tmax(void) {
-  return 2;
+  return ~(1 << 31);
 }
 /* 
  * absVal - absolute value of x
@@ -322,7 +322,8 @@ int tmax(void) {
  *   Rating: 4
  */
 int absVal(int x) {
-  return 2;
+  int mask = x >> 31; // arithmetic right shift, all ones if negative, all zeros otherwise
+  return (mask & (~x + 1)) | (x & ~mask);
 }
 /* 
  * isNonNegative - return 1 if x >= 0, return 0 otherwise 
@@ -332,7 +333,7 @@ int absVal(int x) {
  *   Rating: 2
  */
 int isNonNegative(int x) {
-  return 2;
+  return !((x >> 31) & 1);
 }
 /* 
  * isGreater - if x > y  then return 1, else return 0 
