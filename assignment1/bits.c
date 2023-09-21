@@ -190,15 +190,7 @@ int bitAnd(int x, int y) {
  *   Rating: 1
  */
 int bitXor(int x, int y) {
-  /** 
-   * 0 0   0 
-   * 0 1   1    ~x & y
-   * 1 0   1    x & ~y
-   * 1 1   0
-
-   * ~(~(~x & y) & ~(x & ~y))
-  */
-  return ~(~(~x & y) & ~(x & ~y));
+  return ~(~x & ~y) & ~(x & y);
 }
 /* 
  * isEqual - return 1 if x == y, and 0 otherwise 
@@ -208,7 +200,7 @@ int bitXor(int x, int y) {
  *   Rating: 2
  */
 int isEqual(int x, int y) {
-  return !(~x + 1 + y);
+  return !(x ^ y);
 }
 /* 
  * getByte - Extract byte n from word x
