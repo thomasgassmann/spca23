@@ -224,7 +224,7 @@ int getByte(int x, int n) {
  */
 int fitsBits(int x, int n) {
   // 32 - n
-  int shift = 32 + (~n + 1);
+  int shift = 33 + ~n;
   // clears out top 32 - n bits and replaces them with bit at index n - 1
   int mask = (x << shift) >> shift;
   // return 1 if x equals mask, i.e. if twos complement of x equals twos
