@@ -323,8 +323,13 @@ int tmax(void) {
  *   Rating: 4
  */
 int absVal(int x) {
-  int mask = x >> 31; // arithmetic right shift, all ones if negative, all zeros otherwise
-  return (mask & (~x + 1)) | (x & ~mask);
+  int a = x >> 31;
+  // if x negative, a is 0xFFFFFFFF, otherwise 0
+  // if x non-negative:  (x + 0) ^ 0 = x ^ 0 = x
+  // if x negative: (x + 0xFFFFFFFF) ^ 0xFFFFFFFF, we want ~x + 1
+  // xor: if 0 => 1, 1 => 0, xor acts as negate
+  // + 0xFFFFFFFF sets all bits of the "value" to 0, sets rest to 1
+  return (x + a) ^ a;
 }
 /* 
  * isNonNegative - return 1 if x >= 0, return 0 otherwise 
