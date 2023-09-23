@@ -402,8 +402,7 @@ int rotateLeft(int x, int n) {
  *   Rating: 3
  */
 int satMul2(int x) {
-    int xx = x << 1; // 2x
-    int isOverflow = (x ^ xx) >> 31; // detect change of sign bit, i.e. overflow
-    int sat = (x >> 31) ^ ~(1 << 31); // if x negative, gives 0xFFFFFFFF ^ 0x7FFFFFFF = 0x80000000, if x is potive gives 0x00000000 ^ 0x7FFFFFFF = 0x7FFFFFFF
-    return (isOverflow & sat) | (~isOverflow & xx); // return sat if overflown, xx is not overflown
+  int res = x << 1;
+  int a = (res ^ x) >> 31;
+  return (a << 31) ^ (res >> a);
 }
