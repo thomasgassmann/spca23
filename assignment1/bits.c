@@ -402,7 +402,17 @@ int rotateLeft(int x, int n) {
  *   Rating: 3
  */
 int satMul2(int x) {
-  int res = x << 1;
-  int a = (res ^ x) >> 31;
+  int res = x << 1; // 2x
+  // different signs => overflow
+  int a = (res ^ x) >> 31; // all ones if res and x have different sign, otherwise 0
+  // left side is 80000000 if res and x have different signs, otherwise 0
+
+  // right side is all ones if res and x have different signs and res is negative
+  // right side is all zeros if res and x have different signs and res is positive
+  // otherwise res
+
+  // no overflow => 0 ^ res = res
+  // overflow => 80000000 ^ FFFFFFFF = 7FFFFFFF if res positive
+  // overflow => 80000000 ^ 00000000 = 80000000 if res is negative
   return (a << 31) ^ (res >> a);
 }
