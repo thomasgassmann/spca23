@@ -388,9 +388,7 @@ int multFiveEighths(int x) {
  *   Rating: 3 
  */
 int rotateLeft(int x, int n) {
-  int upper = x << n;
-  int lower = x >> (33 + ~n);
-  return upper | (lower & ~(~0 << n));
+  return ((x ^ (x >> 31)) << n) ^ (x >> ~n >> 1);
 }
 /*
  * satMul2 - multiplies by 2, saturating to Tmin or Tmax if overflow
