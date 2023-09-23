@@ -242,10 +242,8 @@ int fitsBits(int x, int n) {
 int anyEvenBit(int x) {
   x = (x >> 16) | x;
   x = (x >> 8) | x;
-  x = (x >> 4) | x;
-  x = (x >> 2) | x;
 
-  return x & 1;
+  return !!(x & 0x55); // 01010101
 }
 /*
  * bitCount - returns count of number of 1's in word
