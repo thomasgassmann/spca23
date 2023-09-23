@@ -253,19 +253,28 @@ int anyEvenBit(int x) {
  *   Rating: 4
  */
 int bitCount(int x) {
-  // https://books.google.ch/books?id=iBNKMspIlqEC&pg=PA66&redir_esc=y#v=onepage&q&f=false
-  int ones = 0x55 | (0x55 << 8) | (0x55 << 16) | (0x55 << 24);
-  int twos = 0x33 | (0x33 << 8) | (0x33 << 16) | (0x33 << 24);
-  int fours = 0x0F | (0x0F << 8) | (0x0F << 16) | (0x0F << 24);
-  int eights = 0xFF | (0xFF << 16);
-  int sixteens = 0xFF | (0xFF << 8);
+  int a, b, c;
 
-  x = (x & ones) + ((x >> 1) & ones);
-  x = (x & twos) + ((x >> 2) & twos);
-  x = (x + (x >> 4)) & fours;
-  x = (x + (x >> 8)) & eights;
-  x = (x + (x >> 16)) & sixteens;
-  return x;
+  b = 0x0F;
+  b = b | (b << 8);
+  b = b | (b << 16);
+  // b equals 0x0F0F0F0F
+
+  c = b ^ (b << 2); // 0x0f ^ 0x3c == 0x33
+  a = c ^ (c << 1); // 0x33 ^ 0x66 == 0x55
+
+  // a = 4x 01010101
+  // b = 4x 00001111
+  // c = 4x 00110011
+
+  x = (x & a) + ((x >> 1) & a); // each consecutive two bits contain bit count
+  x = (x & c) + ((x >> 2) & c); // each nibble contains bit count
+  x = (x + (x >> 4)) & b; // each byte contains bit count
+
+  x = x + (x >> 8);
+  x = x + (x >> 16);
+
+  return x & 0x3f;
 }
 /* 
  * bang - Compute !x without using !
