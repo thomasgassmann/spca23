@@ -339,7 +339,7 @@ int absVal(int x) {
  *   Rating: 2
  */
 int isNonNegative(int x) {
-  return !((x >> 31) & 1);
+  return !(x >> 31);
 }
 /* 
  * isGreater - if x > y  then return 1, else return 0 
