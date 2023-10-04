@@ -1,0 +1,6 @@
+#!/bin/bash
+gcc -Wall -g\
+    -fsanitize=address \
+    -fsanitize=undefined \
+    -fstack-protector-all \
+    "$@"
