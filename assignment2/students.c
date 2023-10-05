@@ -1,7 +1,26 @@
-#include "lib.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+#include <stddef.h>
+
+struct student {
+    char fname[100];
+    char lname[100];
+    int year;
+    int age;
+};
+
+extern struct student class[];
+
+int compare_first_name(const void *a, const void *b);
+int compare_last_name(const void *a, const void *b);
+void apply(struct student *sarr, int nrec, void(*fp)(void *prec, void *arg, char *out), void *arg, char *out);
+void printrec(void *prec, void *arg, char *out);
+void isolder(void *prec, void *arg, char *out);
+
+//bonus
+void mysort(void *base, size_t num, size_t width, int (*comparator)(const void *, const void *));
 
 struct student class[] = {
     {"Sean", "Penn", 2, 21},
@@ -23,7 +42,7 @@ int compare_first_name(const void *a, const void *b)
 {
   struct student *first = (struct student *)a;
   struct student *second = (struct student *)b;
-  return strcmp(first->first_name, second->first_name);
+  return strcmp(first->fname, second->fname);
 }
 
 /*
@@ -32,8 +51,9 @@ int compare_first_name(const void *a, const void *b)
  */
 int compare_last_name(const void *a, const void *b)
 {
-  // Student TODO: Implement
-  return 1; /*place holder for now*/
+  struct student *first = (struct student *)a;
+  struct student *second = (struct student *)b;
+  return strcmp(first->lname, second->lname);
 }
 
 /*!
@@ -43,8 +63,9 @@ int compare_last_name(const void *a, const void *b)
 void apply(struct student *sarr, int nrec, void (*fp)(void *prec, void *arg, char *out),
            void *arg, char *out)
 {
-  // Student TODO: Implement
-  return;
+  for (int i = 0; i < nrec; i++) {
+    fp(&sarr[i], arg, out);
+  }
 }
 
 /*
@@ -71,8 +92,10 @@ void printrec(void *prec, void *arg, char *out)
  */
 void isolder(void *prec, void *arg, char *out)
 {
-  // Student TODO: Implement
-  return;
+  struct student *student = (struct student *)prec;
+  if (student->age > *((int*)arg)) {
+    printrec(prec, arg, out);
+  }
 }
 
 // PART OF BONUS SOLUTION: as an example we implement heapsort
@@ -126,6 +149,27 @@ void buildMaxHeap(void *base, size_t n, size_t size,
 void mysort(void *base, size_t num, size_t width,
             int (*comparator)(const void *, const void *))
 {
-  // Student BONUS TODO: Implement
-  return;
+  buildMaxHeap(base, num, width, comparator);
+  size_t c = num - 1;
+  while (c > 0) {
+    swap(base + c * width, base, width);
+    buildMaxHeap(base, c, width, comparator);
+    c--;
+  }
+}
+
+int compare(int *a, int *b) {
+    return *a - *b;
+}
+
+int main() {
+    int values[] = { 12, 5, 8, 9, 100, 1 };
+
+    int length = sizeof(values) / sizeof(values[0]);
+
+    mysort(values, length, sizeof(values[0]), &compare);
+
+    for (int i = 0; i < length; i++) {
+        printf("%d\n", values[i]);
+    }
 }
