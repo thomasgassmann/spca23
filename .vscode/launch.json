@@ -1,0 +1,26 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "malloc lab",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/assignment3/mdriver",
+            "args": [
+                "-v",
+                "-V",
+                "-f",
+                "traces/short1.rep"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/assignment3",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "malloc-lab-debug"
+        }
+    ]
+}
