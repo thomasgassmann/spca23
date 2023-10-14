@@ -1,8 +1,40 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
+    "inputs": [
+        {
+            "id": "trace",
+            "type": "pickString",
+            "description": "which trace to run",
+            "options": [
+                "traces/amptjp-bal.rep",
+                "traces/amptjp.rep",
+                "traces/binary2-bal.rep",
+                "traces/binary2.rep",
+                "traces/binary-bal.rep",
+                "traces/binary.rep",
+                "traces/cccp-bal.rep",
+                "traces/cccp.rep",
+                "traces/coalescing-bal.rep",
+                "traces/coalescing.rep",
+                "traces/cp-decl-bal.rep",
+                "traces/cp-decl.rep",
+                "traces/expr-bal.rep",
+                "traces/expr.rep",
+                "traces/random2-bal.rep",
+                "traces/random2.rep",
+                "traces/random-bal.rep",
+                "traces/random.rep",
+                "traces/realloc2-bal.rep",
+                "traces/realloc2.rep",
+                "traces/realloc-bal.rep",
+                "traces/realloc.rep",
+                "traces/short1-bal.rep",
+                "traces/short1.rep",
+                "traces/short2-bal.rep",
+                "traces/short2.rep"
+            ]
+        }
+    ],
     "configurations": [
         {
             "name": "malloc lab",
@@ -13,7 +45,7 @@
                 "-v",
                 "-V",
                 "-f",
-                "traces/short1.rep"
+                "${input:trace}"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/assignment3",

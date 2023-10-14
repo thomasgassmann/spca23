@@ -2,13 +2,15 @@
 # Students' Makefile for the Malloc Lab
 #
 CC = gcc
-CFLAGS = -Wall -O2
+CFLAGS = -Wall
 
 OBJS = mdriver.o mm.o memlib.o fsecs.o fcyc.o clock.o ftimer.o
 
 DEBUG ?= 0
 ifeq ($(DEBUG), 1)
     CFLAGS+= -g
+else
+	CFLAGS+= -O2
 endif
 
 mdriver: $(OBJS)
