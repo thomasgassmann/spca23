@@ -17,32 +17,34 @@ partition:
         # %r8d: A[j]
         movl (%rsi), %edx
         movq %rdi, %r9
-        add %r9, -4
+        addq $-4, %r9
         
         movq %rdi, %rcx
 .body:  movl (%rcx), %r8d
-        cmpl %edx, %r8d
+        cmpl %r8d, %edx
         jge .taken
-.next:  addq %rcx, 4
+.next:  addq $4, %rcx
         cmpq %rsi, %rcx
         je .lexit
         jmp .body
-.taken: addq %r9, 4
+.taken: addq $4, %r9
         
         pushq %rdx
         pushq %rdi
         pushq %r9
+        pushq %rsi
         
         movq %r9, %rsi
         movq %rcx, %rdi
         call swap
         
+        popq %rsi
         popq %r9
         popq %rdi
         popq %rdx
 
         jmp .next
-.lexit: addq %r9, 4
+.lexit: addq $4, %r9
         
         movq %r9, %rdi
         movq %rsi, %rsi
@@ -56,7 +58,7 @@ quicksort:
         # %rdi: lo
         # %rsi: hi
         cmpq %rsi, %rdi
-        jge .exit
+        jge .qexit
         
         pushq %rsi
         pushq %rdi
@@ -66,19 +68,19 @@ quicksort:
         pushq %rax
         
         movq (%rsp), %rsi
-        add %rsi, -4
+        addq $-4, %rsi
         movq 8(%rsp), %rdi
         call quicksort
         
         movq (%rsp), %rdi
-        add %rdi, 4
+        addq $4, %rdi
         movq 16(%rsp), %rsi
         call quicksort
         
         popq %rax
         popq %rdi
         popq %rsi
-.exit:  ret
+.qexit: ret
 #------------------------------------------------
 
 #------------------------------------------------
