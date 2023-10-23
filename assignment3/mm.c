@@ -36,11 +36,17 @@
 #define HDRP(bp) ((char *)(bp) - BLOCK_META_SIZE)
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - BLOCK_META_SIZE * 2)
 
+// other useful macros
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) > (b) ? (b) : (a))
+
 // read values from header pointer
 #define GET_SIZE(p) (GET(p) & ~NON_SIZE_BIT_MASK)
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
-#define BLOCK_SIZE(size) (ALIGN(size + 2 * BLOCK_META_SIZE))
+// a block contains header, footer and if not allocated also at least two pointers
+#define BLOCK_SIZE(size) (ALIGN(MAX(size, 2 * sizeof(void *)) + 2 * BLOCK_META_SIZE))
+
 #ifdef DEBUG
 #define PRINT_DEBUG() mm_check()
 #else
@@ -52,10 +58,6 @@
 #define NEXT_BLOCK(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)))
 // skip current header and read prev footer
 #define PREV_BLOCK(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - BLOCK_META_SIZE * 2))
-
-// other useful macros
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define MIN(a, b) ((a) > (b) ? (b) : (a))
 
 // globals
 void *heap_listp;
@@ -164,7 +166,8 @@ void mm_check() {
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
-    int prologue_block_size = BLOCK_SIZE(0);
+    // prologue and epilogue block do not contain pointers
+    int prologue_block_size = 2 * BLOCK_META_SIZE;
     if ((heap_listp = mem_sbrk(2 * prologue_block_size)) == (void *)-1) {
         return -1;
     }
