@@ -25,34 +25,118 @@
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
 
-#define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-#define BLOCK_SIZE(size) (ALIGN(size + 2 * SIZE_T_SIZE))
-
 #define GET(p) (*(unsigned int *)(p))
 #define PUT(p, val) (*(unsigned int *)(p) = (val))
 
 #define BLOCK_META(size, alloc) (size | alloc)
-#define BLOCK_META_SIZE sizeof(int)
+#define BLOCK_META_SIZE sizeof(size_t)
+#define NON_SIZE_BIT_MASK (0x111)
 
+// get header or footer from block pointer
 #define HDRP(bp) ((char *)(bp) - BLOCK_META_SIZE)
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - BLOCK_META_SIZE * 2)
 
-#define GET_SIZE(p) (GET(p) & ~(ALIGNMENT - 1))
+// read values from header pointer
+#define GET_SIZE(p) (GET(p) & ~NON_SIZE_BIT_MASK)
 #define GET_ALLOC(p) (GET(p) & 0x1)
+
+#define BLOCK_SIZE(size) (ALIGN(size + 2 * BLOCK_META_SIZE))
+
+// get next/prev block from block pointer
+// get size directly from current header
+#define NEXT_BLOCK(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)))
+// skip current header and read prev footer
+#define PREV_BLOCK(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - BLOCK_META_SIZE * 2))
+
+// other useful macros
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 // globals
 void *heap_listp;
 
 static void *find_fit(size_t size) {
+    for (void *current = heap_listp; GET_SIZE(HDRP(current)) > 0; current = NEXT_BLOCK(current)) {
+        if (!GET_ALLOC(HDRP(current)) && GET_SIZE(HDRP(current)) >= size) {
+            return current;
+        }
+    }
 
+    return NULL;
 }
 
-static void *extend_heap(size_t words) {
+static void *coalesce(char *bp) {
+    size_t is_prev_alloc = GET_ALLOC(FTRP(PREV_BLOCK(bp)));
+    size_t is_next_alloc = GET_ALLOC(HDRP(NEXT_BLOCK(bp)));
+    if (is_prev_alloc && is_next_alloc) {
+        // nothing to coalesce
+        return bp;
+    }
 
+    size_t current_block_size = GET_SIZE(HDRP(bp));
+    if (is_prev_alloc && !is_next_alloc) {
+        // merge current with next one
+        size_t new_block_size = current_block_size + GET_SIZE(HDRP(NEXT_BLOCK(bp)));
+        PUT(HDRP(bp), BLOCK_META(new_block_size, 0));
+        // works because header was already updated
+        // update footer only after header in this case
+        PUT(FTRP(bp), BLOCK_META(new_block_size, 0));
+        return bp;
+    }
+
+    if (!is_prev_alloc && is_next_alloc) {
+        // merge current with prev one
+        size_t new_block_size = current_block_size + GET_SIZE(HDRP(PREV_BLOCK(bp)));
+        PUT(HDRP(PREV_BLOCK(bp)), BLOCK_META(new_block_size, 0));
+        PUT(FTRP(bp), BLOCK_META(new_block_size, 0));
+        return PREV_BLOCK(bp);
+    }
+
+    size_t new_block_size = current_block_size
+        + GET_SIZE(HDRP(NEXT_BLOCK(bp)))
+        + GET_SIZE(HDRP(PREV_BLOCK(bp)));
+
+    PUT(HDRP(PREV_BLOCK(bp)), BLOCK_META(new_block_size, 0));
+    PUT(FTRP(NEXT_BLOCK(bp)), BLOCK_META(new_block_size, 0));
+
+    return PREV_BLOCK(bp);
+}
+
+// number of bytes we want to extend the heap, not number of bytes
+static void *extend_heap(size_t bytes) {
+    size_t effective_size = ALIGN(bytes);
+    char *bp;
+    if ((long)(bp = mem_sbrk(effective_size)) == -1) {
+        return NULL;
+    }
+
+    // this overwrites the current epilogue header
+    // the size of the new block stretches until just
+    // before the new epilogue block
+    PUT(HDRP(bp), BLOCK_META(effective_size, 0));
+
+    PUT(FTRP(bp), BLOCK_META(effective_size, 0));
+    PUT(HDRP(NEXT_BLOCK(bp)), BLOCK_META(0, 1));
+
+    // previous block might have been free, coalesce them
+    return coalesce(bp);
 }
 
 static void place(void *block, size_t size) {
+    size_t current_size = GET_SIZE(HDRP(block));
+    size_t min_block_size = BLOCK_SIZE(1);
+    if (current_size - size < min_block_size) {
+        PUT(HDRP(block), BLOCK_META(current_size, 1));
+        PUT(FTRP(block), BLOCK_META(current_size, 1));
+        return;
+    }
 
+    // there is enough space to fit a new block of size min_block_size
+    // we assume size is aligned to 8 bytes
+    PUT(HDRP(block), BLOCK_META(size, 1));
+    PUT(FTRP(block), BLOCK_META(size, 1));
+    char *next_block = NEXT_BLOCK(block);
+    PUT(HDRP(next_block), BLOCK_META((current_size - size), 0));
+    PUT(FTRP(next_block), BLOCK_META((current_size - size), 0));
 }
 
 void mm_check(void) {
@@ -73,6 +157,9 @@ int mm_init(void) {
     PUT(heap_listp + 3 * BLOCK_META_SIZE, BLOCK_META(0, 1)); // epilogue header
 
     heap_listp += 2 * BLOCK_META_SIZE; // heap_listp is going to point to the first block content (size 0)
+    if (extend_heap(mem_pagesize()) == NULL) {
+        return -1;
+    }
 
     return 0;
 }
@@ -93,7 +180,7 @@ void *mm_malloc(size_t size) {
         return bp;
     }
 
-    if ((bp = extend_heap(block_size)) == NULL) {
+    if ((bp = extend_heap(MAX(block_size, mem_pagesize()))) == NULL) {
         return NULL;
     }
 
@@ -105,12 +192,27 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
+    size_t size = GET_SIZE(HDRP(ptr));
+
+    PUT(HDRP(ptr), BLOCK_META(size, 0));
+    PUT(FTRP(ptr), BLOCK_META(size, 0));
+
+    coalesce(ptr);
 }
 
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
 void *mm_realloc(void *ptr, size_t size) {
+    if (ptr == NULL) {
+        return mm_malloc(size);
+    }
+
+    if (size == 0) {
+        mm_free(ptr);
+        return NULL;
+    }
+
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
@@ -118,7 +220,7 @@ void *mm_realloc(void *ptr, size_t size) {
     newptr = mm_malloc(size);
     if (newptr == NULL)
         return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
+    copySize = *(size_t *)((char *)oldptr - BLOCK_META_SIZE);
     if (size < copySize)
         copySize = size;
     memcpy(newptr, oldptr, copySize);
