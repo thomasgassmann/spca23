@@ -150,11 +150,6 @@ void mm_check() {
     printf("\n\n--- CURRENT BLOCKS ---\n");
     for (current = heap_listp; GET_SIZE(HDRP(current)) > 0; current = NEXT_BLOCK(current)) {
         char *header_p = HDRP(current);
-
-        int headerval = *header_p;
-        unsigned int val = GET(header_p);
-        unsigned int masked = val & ~NON_SIZE_BIT_MASK;
-        int s = GET_SIZE(header_p);
         printf("block %d(size=0x%x, addr=%p, alloc=%d)\n", i, GET_SIZE(header_p), current, GET_ALLOC(header_p));
 
         i++;
