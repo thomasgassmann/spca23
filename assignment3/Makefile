@@ -8,7 +8,7 @@ OBJS = mdriver.o mm.o memlib.o fsecs.o fcyc.o clock.o ftimer.o
 
 DEBUG ?= 0
 ifeq ($(DEBUG), 1)
-    CFLAGS+= -g
+    CFLAGS+= -g -D DEBUG
 else
 	CFLAGS+= -O2
 endif

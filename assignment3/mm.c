@@ -28,9 +28,9 @@
 #define GET(p) (*(unsigned int *)(p))
 #define PUT(p, val) (*(unsigned int *)(p) = (val))
 
-#define BLOCK_META(size, alloc) (size | alloc)
-#define BLOCK_META_SIZE sizeof(size_t)
-#define NON_SIZE_BIT_MASK (0x111)
+#define BLOCK_META(size, alloc) ((int)((int)size | (int)alloc))
+#define BLOCK_META_SIZE sizeof(int)
+#define NON_SIZE_BIT_MASK (0x7)
 
 // get header or footer from block pointer
 #define HDRP(bp) ((char *)(bp) - BLOCK_META_SIZE)
@@ -41,6 +41,11 @@
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
 #define BLOCK_SIZE(size) (ALIGN(size + 2 * BLOCK_META_SIZE))
+#ifdef DEBUG
+#define PRINT_DEBUG() mm_check()
+#else
+#define PRINT_DEBUG()
+#endif
 
 // get next/prev block from block pointer
 // get size directly from current header
@@ -124,22 +129,39 @@ static void *extend_heap(size_t bytes) {
 static void place(void *block, size_t size) {
     size_t current_size = GET_SIZE(HDRP(block));
     size_t min_block_size = BLOCK_SIZE(1);
-    if (current_size - size < min_block_size) {
-        PUT(HDRP(block), BLOCK_META(current_size, 1));
-        PUT(FTRP(block), BLOCK_META(current_size, 1));
+    if (current_size - size >= min_block_size) {
+        // there is enough space to fit a new block of size min_block_size
+        // we assume size is aligned to 8 bytes
+        PUT(HDRP(block), BLOCK_META(size, 1));
+        PUT(FTRP(block), BLOCK_META(size, 1));
+        char *next_block = NEXT_BLOCK(block);
+        PUT(HDRP(next_block), BLOCK_META((current_size - size), 0));
+        PUT(FTRP(next_block), BLOCK_META((current_size - size), 0));
         return;
     }
 
-    // there is enough space to fit a new block of size min_block_size
-    // we assume size is aligned to 8 bytes
-    PUT(HDRP(block), BLOCK_META(size, 1));
-    PUT(FTRP(block), BLOCK_META(size, 1));
-    char *next_block = NEXT_BLOCK(block);
-    PUT(HDRP(next_block), BLOCK_META((current_size - size), 0));
-    PUT(FTRP(next_block), BLOCK_META((current_size - size), 0));
+    PUT(HDRP(block), BLOCK_META(current_size, 1));
+    PUT(FTRP(block), BLOCK_META(current_size, 1));
 }
 
-void mm_check(void) {
+void mm_check() {
+    int i = 0;
+    char *current;
+    printf("\n\n--- CURRENT BLOCKS ---\n");
+    for (current = heap_listp; GET_SIZE(HDRP(current)) > 0; current = NEXT_BLOCK(current)) {
+        char *header_p = HDRP(current);
+
+        int headerval = *header_p;
+        unsigned int val = GET(header_p);
+        unsigned int masked = val & ~NON_SIZE_BIT_MASK;
+        int s = GET_SIZE(header_p);
+        printf("block %d(size=0x%x, addr=%p, alloc=%d)\n", i, GET_SIZE(header_p), current, GET_ALLOC(header_p));
+
+        i++;
+    }
+
+    printf("epilogue block(size=0x%x, addr=%p, alloc=%d)\n", GET_SIZE(HDRP(current)), current, GET_ALLOC(HDRP(current)));
+    printf("Found a total of %d blocks\n", i + 1);
 }
 
 /*
@@ -147,7 +169,7 @@ void mm_check(void) {
  */
 int mm_init(void) {
     int prologue_block_size = BLOCK_SIZE(0);
-    if ((heap_listp = mem_sbrk(prologue_block_size)) == (void *)-1) {
+    if ((heap_listp = mem_sbrk(2 * prologue_block_size)) == (void *)-1) {
         return -1;
     }
 
@@ -161,6 +183,7 @@ int mm_init(void) {
         return -1;
     }
 
+    PRINT_DEBUG();
     return 0;
 }
 
@@ -169,6 +192,7 @@ int mm_init(void) {
  *     Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size) {
+    PRINT_DEBUG();
     if (size == 0) {
         return NULL;
     }
@@ -177,14 +201,17 @@ void *mm_malloc(size_t size) {
     char *bp;
     if ((bp = find_fit(block_size)) != NULL) {
         place(bp, block_size);
+        PRINT_DEBUG();
         return bp;
     }
 
     if ((bp = extend_heap(MAX(block_size, mem_pagesize()))) == NULL) {
+        PRINT_DEBUG();
         return NULL;
     }
 
     place(bp, block_size);
+    PRINT_DEBUG();
     return bp;
 }
 
@@ -192,12 +219,14 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
+    PRINT_DEBUG();
     size_t size = GET_SIZE(HDRP(ptr));
 
     PUT(HDRP(ptr), BLOCK_META(size, 0));
     PUT(FTRP(ptr), BLOCK_META(size, 0));
 
     coalesce(ptr);
+    PRINT_DEBUG();
 }
 
 /*
