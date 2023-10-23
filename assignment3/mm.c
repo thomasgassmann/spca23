@@ -55,6 +55,7 @@
 
 // other useful macros
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) > (b) ? (b) : (a))
 
 // globals
 void *heap_listp;
@@ -237,17 +238,13 @@ void *mm_realloc(void *ptr, size_t size) {
         return NULL;
     }
 
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
-
-    newptr = mm_malloc(size);
-    if (newptr == NULL)
+    void *newptr = mm_malloc(size);
+    if (newptr == NULL) {
         return NULL;
-    copySize = *(size_t *)((char *)oldptr - BLOCK_META_SIZE);
-    if (size < copySize)
-        copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
+    }
+
+    size_t copySize = MIN(GET_SIZE(HDRP(ptr)) - 2 * BLOCK_META_SIZE, size);
+    memcpy(newptr, ptr, copySize);
+    mm_free(ptr);
     return newptr;
 }
