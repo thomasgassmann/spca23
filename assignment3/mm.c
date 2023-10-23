@@ -241,12 +241,20 @@ void *mm_realloc(void *ptr, size_t size) {
         return NULL;
     }
 
+
+    size_t block_size = BLOCK_SIZE(size);
+    size_t current_size = GET_SIZE(HDRP(ptr));
+    if (current_size >= block_size) {
+        place(ptr, size);
+        return ptr;
+    }
+
     void *newptr = mm_malloc(size);
     if (newptr == NULL) {
         return NULL;
     }
 
-    size_t copySize = MIN(GET_SIZE(HDRP(ptr)) - 2 * BLOCK_META_SIZE, size);
+    size_t copySize = MIN(current_size - 2 * BLOCK_META_SIZE, size);
     memcpy(newptr, ptr, copySize);
     mm_free(ptr);
     return newptr;
