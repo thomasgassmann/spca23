@@ -67,38 +67,33 @@
 
 // how many free list there are
 #define FREE_LIST_COUNT 128
-// which fraction of the free list count should contain exact matches starting from the smallest block size
-#define EXACT_FRACTION 4
 
 // globals
 void *heap_listp; // points to epilogue block
 void **free_listp; // points to free lists
 
 static int map_to_free_list_index(size_t size) {
-    return 127;
-
     // sizes are all aligned by ALIGNMENT, make sure smallest block size maps to 0
-    // size_t base = (size - BLOCK_SIZE(1)) / ALIGNMENT;
-    // size_t h = FREE_LIST_COUNT / EXACT_FRACTION;
-    // if (base <= h) {
-    //     return base;
-    // }
-
-    // // TODO: stuff other lists
-    
-    // return FREE_LIST_COUNT - 1;
+    size_t base = (size - BLOCK_SIZE(1)) / ALIGNMENT;
+    size_t index = MIN(base, FREE_LIST_COUNT - 1);
+    assert(index >= 0 && index < FREE_LIST_COUNT);
+    return index;
 }
 
 static void *find_fit(size_t size) {
-    void *list = free_listp[map_to_free_list_index(size)];
-    if (list == NULL) {
-        return NULL;
-    }
+    size_t free_list_index = map_to_free_list_index(size);
+    for (int i = free_list_index; i < FREE_LIST_COUNT; i++) {
+        void *list = free_listp[i];
+        if (list == NULL) {
+            continue;
+        }
 
-    // stop at sentinel or if free list has no more items
-    for (void *current = list; current != NULL && GET_SIZE(HDRP(current)) > 0; current = SUCC_BLOCK(current)) {
-        if (!GET_ALLOC(HDRP(current)) && GET_SIZE(HDRP(current)) >= size) {
-            return current;
+        // stop at epilogue block or if free list has no more items
+        for (void *current = list; current != NULL && GET_SIZE(HDRP(current)) > 0; current = SUCC_BLOCK(current)) {
+            assert(!GET_ALLOC(HDRP(current)));
+            if (GET_SIZE(HDRP(current)) >= size) {
+                return current;
+            }
         }
     }
 
@@ -166,6 +161,7 @@ static void *coalesce(char *bp) {
     if (is_prev_alloc && !is_next_alloc) {
         // remove next from free list
         remove_free_block_from_list(NEXT_BLOCK(bp));
+        remove_free_block_from_list(bp);
 
         // merge current with next one
         size_t new_block_size = current_block_size + GET_SIZE(HDRP(NEXT_BLOCK(bp)));
@@ -173,23 +169,29 @@ static void *coalesce(char *bp) {
         // works because header was already updated
         // update footer only after header in this case
         PUT(FTRP(bp), BLOCK_META(new_block_size, 0));
+
+        add_free_block_to_list(bp);
         return bp;
     }
 
     if (!is_prev_alloc && is_next_alloc) {
         // remove current from free list
         remove_free_block_from_list(bp);
+        remove_free_block_from_list(PREV_BLOCK(bp));
 
         // merge current with prev one
         size_t new_block_size = current_block_size + GET_SIZE(HDRP(PREV_BLOCK(bp)));
         PUT(HDRP(PREV_BLOCK(bp)), BLOCK_META(new_block_size, 0));
         PUT(FTRP(bp), BLOCK_META(new_block_size, 0));
+
+        add_free_block_to_list(PREV_BLOCK(bp));
         return PREV_BLOCK(bp);
     }
 
     // remove current and next from free list
     remove_free_block_from_list(bp);
     remove_free_block_from_list(NEXT_BLOCK(bp));
+    remove_free_block_from_list(PREV_BLOCK(bp));
 
     size_t new_block_size = current_block_size
         + GET_SIZE(HDRP(NEXT_BLOCK(bp)))
@@ -198,6 +200,7 @@ static void *coalesce(char *bp) {
     PUT(HDRP(PREV_BLOCK(bp)), BLOCK_META(new_block_size, 0));
     PUT(FTRP(NEXT_BLOCK(bp)), BLOCK_META(new_block_size, 0));
 
+    add_free_block_to_list(PREV_BLOCK(bp));
     return PREV_BLOCK(bp);
 }
 
@@ -264,6 +267,24 @@ void mm_check() {
 
     printf("epilogue block(size=0x%x, addr=%p, alloc=%d)\n", GET_SIZE(HDRP(current)), current, GET_ALLOC(HDRP(current)));
     printf("Found a total of %d blocks\n", i + 1);
+
+    printf("\n--- FREE BLOCKS ---\n");
+    for (int i = 0; i < FREE_LIST_COUNT; i++) {
+        if (free_listp[i] != NULL) {
+            printf("--- starting list %d ---\n", i);
+        }
+
+        int j = 0;
+        for (current = free_listp[i]; current != NULL; current = SUCC_BLOCK(current)) {
+            char *header_p = HDRP(current);
+
+            unsigned int current_size = GET_SIZE(header_p);
+            size_t expected_index = map_to_free_list_index(current_size);
+            assert(i == expected_index);
+
+            printf("block %d(size=0x%x, addr=%p, alloc=%d)\n", j++, current_size, current, GET_ALLOC(header_p));
+        }
+    }
 }
 
 /*
@@ -297,8 +318,6 @@ int mm_init(void) {
         return -1;
     }
 
-    PRINT_DEBUG();
-
     return 0;
 }
 
@@ -307,7 +326,6 @@ int mm_init(void) {
  *     Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size) {
-    PRINT_DEBUG();
     if (size == 0) {
         return NULL;
     }
@@ -316,17 +334,14 @@ void *mm_malloc(size_t size) {
     char *bp;
     if ((bp = find_fit(block_size)) != NULL) {
         place(bp, block_size);
-        PRINT_DEBUG();
         return bp;
     }
 
     if ((bp = extend_heap(MAX(block_size, mem_pagesize()))) == NULL) {
-        PRINT_DEBUG();
         return NULL;
     }
 
     place(bp, block_size);
-    PRINT_DEBUG();
     return bp;
 }
 
@@ -334,7 +349,6 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
-    PRINT_DEBUG();
     size_t size = GET_SIZE(HDRP(ptr));
 
     PUT(HDRP(ptr), BLOCK_META(size, 0));
@@ -342,7 +356,6 @@ void mm_free(void *ptr) {
     add_free_block_to_list(ptr);
 
     coalesce(ptr);
-    PRINT_DEBUG();
 }
 
 /*
