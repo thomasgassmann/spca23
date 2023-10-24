@@ -68,12 +68,24 @@
 // how many free list there are
 #define FREE_LIST_COUNT 128
 #define EXACT_BELOW 64
-#define LINEAR_BELOW 128
+#define LINEAR_BELOW 120
 #define LINEAR_STEP_SIZE 0x100
 
 // globals
 void *heap_listp; // points to epilogue block
 void **free_listp; // points to free lists
+
+size_t min_linear;
+size_t max_linear_excl;
+double linear_denominator;
+size_t linear_size;
+
+static void init_free_list_constants() {
+    linear_size = LINEAR_BELOW - EXACT_BELOW;
+    min_linear = EXACT_BELOW * ALIGNMENT + BLOCK_SIZE(1);
+    max_linear_excl = LINEAR_STEP_SIZE * (LINEAR_BELOW - EXACT_BELOW) + min_linear;
+    linear_denominator = max_linear_excl - min_linear;
+}
 
 static int map_to_free_list_index(size_t size) {
     // sizes are all aligned by ALIGNMENT, make sure smallest block size maps to 0
@@ -82,13 +94,19 @@ static int map_to_free_list_index(size_t size) {
         return base;
     }
 
-    const size_t min_linear = EXACT_BELOW * ALIGNMENT + BLOCK_SIZE(1);
-    const size_t max_linear_excl = LINEAR_STEP_SIZE * (LINEAR_BELOW - EXACT_BELOW) + min_linear;
-    const size_t linear_size = LINEAR_BELOW - EXACT_BELOW;
-    double frac = (double)(size - min_linear) / (double)(max_linear_excl - min_linear);
+    double frac = (size - min_linear) / linear_denominator;
     size_t off = (size_t)(frac * linear_size);
     if (off < linear_size) {
         return off + EXACT_BELOW;
+    }
+
+    size_t current = max_linear_excl * 2;
+    for (int i = LINEAR_BELOW; i < FREE_LIST_COUNT - 1; i++) {
+        if (size <= current) {
+            return i;
+        }
+
+        current *= 2;
     }
 
     return FREE_LIST_COUNT - 1;
@@ -306,6 +324,7 @@ void mm_check() {
  */
 int mm_init(void) {
     heap_listp = NULL;
+    init_free_list_constants();
 
     // init free lists
     if ((free_listp = mem_sbrk(sizeof(void *) * FREE_LIST_COUNT)) == (void *)-1) {
