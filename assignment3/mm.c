@@ -66,7 +66,7 @@
 #define SUCC_BLOCK(bp) (*(((char **)(bp)) + 1))
 
 // how many free list there are
-#define FREE_LIST_COUNT 128
+#define FREE_LIST_COUNT 64
 
 // globals
 void *heap_listp; // points to epilogue block
