@@ -59,17 +59,70 @@
 // skip current header and read prev footer
 #define PREV_BLOCK(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - BLOCK_META_SIZE * 2))
 
+// get pointers from free block
+#define SET_PRED(bp, pred) (*((char **)(bp)) = pred)
+#define SET_SUCC(bp, succ) (*(((char **)(bp)) + 1) = succ)
+#define PRED_BLOCK(bp) (*((char **)(bp)))
+#define SUCC_BLOCK(bp) (*(((char **)(bp)) + 1))
+
 // globals
-void *heap_listp;
+void *heap_listp; // points to epilogue block
+void *free_listp; // points to first block of free list
 
 static void *find_fit(size_t size) {
-    for (void *current = heap_listp; GET_SIZE(HDRP(current)) > 0; current = NEXT_BLOCK(current)) {
+    if (free_listp == NULL) {
+        return NULL;
+    }
+
+    // stop at sentinel or if free list has no more items
+    for (void *current = free_listp; current != NULL && GET_SIZE(HDRP(current)) > 0; current = SUCC_BLOCK(current)) {
         if (!GET_ALLOC(HDRP(current)) && GET_SIZE(HDRP(current)) >= size) {
             return current;
         }
     }
 
     return NULL;
+}
+
+static void remove_free_block_from_list(char *bp) {
+    assert(!GET_ALLOC(HDRP(bp)));
+
+    char *pred = PRED_BLOCK(bp);
+    char *succ = SUCC_BLOCK(bp);
+    if (pred == NULL && succ == NULL) {
+        // this is the only block
+        free_listp = NULL;
+        return;
+    }
+
+    if (pred == NULL) {
+        // this is the first block
+        SET_PRED(succ, NULL);
+        free_listp = succ;
+        return;
+    }
+
+    if (succ == NULL) {
+        // this is the last block
+        SET_SUCC(pred, NULL);
+        return;
+    }
+
+    // any block in the list
+    SET_SUCC(pred, succ);
+    SET_PRED(succ, pred);
+}
+
+static void add_free_block_to_list(char *bp) {
+    assert(!GET_ALLOC(HDRP(bp)));
+
+    SET_PRED(bp, NULL);
+    SET_SUCC(bp, free_listp);
+    if (free_listp != NULL) {
+        SET_PRED(free_listp, bp);
+    }
+
+    free_listp = bp;
 }
 
 static void *coalesce(char *bp) {
@@ -82,6 +135,9 @@ static void *coalesce(char *bp) {
 
     size_t current_block_size = GET_SIZE(HDRP(bp));
     if (is_prev_alloc && !is_next_alloc) {
+        // remove next from free list
+        remove_free_block_from_list(NEXT_BLOCK(bp));
+
         // merge current with next one
         size_t new_block_size = current_block_size + GET_SIZE(HDRP(NEXT_BLOCK(bp)));
         PUT(HDRP(bp), BLOCK_META(new_block_size, 0));
@@ -92,12 +148,19 @@ static void *coalesce(char *bp) {
     }
 
     if (!is_prev_alloc && is_next_alloc) {
+        // remove current from free list
+        remove_free_block_from_list(bp);
+
         // merge current with prev one
         size_t new_block_size = current_block_size + GET_SIZE(HDRP(PREV_BLOCK(bp)));
         PUT(HDRP(PREV_BLOCK(bp)), BLOCK_META(new_block_size, 0));
         PUT(FTRP(bp), BLOCK_META(new_block_size, 0));
         return PREV_BLOCK(bp);
     }
+
+    // remove current and next from free list
+    remove_free_block_from_list(bp);
+    remove_free_block_from_list(NEXT_BLOCK(bp));
 
     size_t new_block_size = current_block_size
         + GET_SIZE(HDRP(NEXT_BLOCK(bp)))
@@ -123,6 +186,10 @@ static void *extend_heap(size_t bytes) {
     PUT(HDRP(bp), BLOCK_META(effective_size, 0));
 
     PUT(FTRP(bp), BLOCK_META(effective_size, 0));
+
+    add_free_block_to_list(bp);
+
+    // set new epilogue header
     PUT(HDRP(NEXT_BLOCK(bp)), BLOCK_META(0, 1));
 
     // previous block might have been free, coalesce them
@@ -132,6 +199,9 @@ static void *extend_heap(size_t bytes) {
 static void place(void *block, size_t size) {
     size_t current_size = GET_SIZE(HDRP(block));
     size_t min_block_size = BLOCK_SIZE(1);
+
+    remove_free_block_from_list(block);
+
     if (current_size - size >= min_block_size) {
         // there is enough space to fit a new block of size min_block_size
         // we assume size is aligned to 8 bytes
@@ -140,6 +210,9 @@ static void place(void *block, size_t size) {
         char *next_block = NEXT_BLOCK(block);
         PUT(HDRP(next_block), BLOCK_META((current_size - size), 0));
         PUT(FTRP(next_block), BLOCK_META((current_size - size), 0));
+
+        add_free_block_to_list(next_block);
+
         return;
     }
 
@@ -166,6 +239,9 @@ void mm_check() {
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
+    heap_listp = NULL;
+    free_listp = NULL;
+
     // prologue and epilogue block do not contain pointers
     int prologue_block_size = 2 * BLOCK_META_SIZE;
     if ((heap_listp = mem_sbrk(2 * prologue_block_size)) == (void *)-1) {
@@ -223,6 +299,7 @@ void mm_free(void *ptr) {
 
     PUT(HDRP(ptr), BLOCK_META(size, 0));
     PUT(FTRP(ptr), BLOCK_META(size, 0));
+    add_free_block_to_list(ptr);
 
     coalesce(ptr);
     PRINT_DEBUG();
