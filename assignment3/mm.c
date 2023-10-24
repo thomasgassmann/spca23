@@ -65,17 +65,37 @@
 #define PRED_BLOCK(bp) (*((char **)(bp)))
 #define SUCC_BLOCK(bp) (*(((char **)(bp)) + 1))
 
+// how many free list there are
+#define FREE_LIST_COUNT 128
+// which fraction of the free list count should contain exact matches starting from the smallest block size
+#define EXACT_FRACTION 4
+
 // globals
 void *heap_listp; // points to epilogue block
-void *free_listp; // points to first block of free list
+void **free_listp; // points to free lists
+
+static int map_to_free_list_index(size_t size) {
+    return 0;
+    // // sizes are all aligned by ALIGNMENT, make sure smallest block size maps to 0
+    // size_t base = (size - BLOCK_SIZE(1)) / ALIGNMENT;
+    // size_t h = FREE_LIST_COUNT / EXACT_FRACTION;
+    // if (base <= h) {
+    //     return base;
+    // }
+
+    // // TODO: stuff other lists
+    
+    // return FREE_LIST_COUNT - 1;
+}
 
 static void *find_fit(size_t size) {
-    if (free_listp == NULL) {
+    void *list = free_listp[map_to_free_list_index(size)];
+    if (list == NULL) {
         return NULL;
     }
 
     // stop at sentinel or if free list has no more items
-    for (void *current = free_listp; current != NULL && GET_SIZE(HDRP(current)) > 0; current = SUCC_BLOCK(current)) {
+    for (void *current = list; current != NULL && GET_SIZE(HDRP(current)) > 0; current = SUCC_BLOCK(current)) {
         if (!GET_ALLOC(HDRP(current)) && GET_SIZE(HDRP(current)) >= size) {
             return current;
         }
@@ -87,18 +107,22 @@ static void *find_fit(size_t size) {
 static void remove_free_block_from_list(char *bp) {
     assert(!GET_ALLOC(HDRP(bp)));
 
+    // TODO:  we expect blocks to be removed and readded if size changes!
+    size_t size = GET_SIZE(HDRP(bp));
+    size_t free_list_index = map_to_free_list_index(size);
+
     char *pred = PRED_BLOCK(bp);
     char *succ = SUCC_BLOCK(bp);
     if (pred == NULL && succ == NULL) {
         // this is the only block
-        free_listp = NULL;
+        free_listp[free_list_index] = NULL;
         return;
     }
 
     if (pred == NULL) {
         // this is the first block
         SET_PRED(succ, NULL);
-        free_listp = succ;
+        free_listp[free_list_index] = succ;
         return;
     }
 
@@ -116,13 +140,17 @@ static void remove_free_block_from_list(char *bp) {
 static void add_free_block_to_list(char *bp) {
     assert(!GET_ALLOC(HDRP(bp)));
 
+    // TODO:  we expect blocks to be removed and readded if size changes!
+    size_t size = GET_SIZE(HDRP(bp));
+    size_t free_list_index = map_to_free_list_index(size);
+
     SET_PRED(bp, NULL);
-    SET_SUCC(bp, free_listp);
-    if (free_listp != NULL) {
-        SET_PRED(free_listp, bp);
+    SET_SUCC(bp, free_listp[free_list_index]);
+    if (free_listp[free_list_index] != NULL) {
+        SET_PRED(free_listp[free_list_index], bp);
     }
 
-    free_listp = bp;
+    free_listp[free_list_index] = bp;
 }
 
 static void *coalesce(char *bp) {
@@ -242,7 +270,15 @@ void mm_check() {
  */
 int mm_init(void) {
     heap_listp = NULL;
-    free_listp = NULL;
+
+    // init free lists
+    if ((free_listp = mem_sbrk(sizeof(void *) * FREE_LIST_COUNT)) == (void *)-1) {
+        return -1;
+    }
+
+    for (int i = 0; i < FREE_LIST_COUNT; i++) {
+        free_listp[i] = NULL;
+    }
 
     // prologue and epilogue block do not contain pointers
     int prologue_block_size = 2 * BLOCK_META_SIZE;
@@ -261,6 +297,7 @@ int mm_init(void) {
     }
 
     PRINT_DEBUG();
+
     return 0;
 }
 
