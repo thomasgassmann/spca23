@@ -327,26 +327,40 @@ void *mm_realloc(void *ptr, size_t size) {
         return ptr;
     }
 
-    // size_t c = current_size;
-    // char *current_block = ptr;
-    // while (1) {
-    //     char *next = NEXT_BLOCK(current_block);
-    //     if (GET_ALLOC(HDRP(next)) || GET_SIZE(HDRP(next)) == 0) {
-    //         // if we can't find continuous sequence of unallocated blocks, stop
-    //         // if epilogue block, stop
-    //         break;
-    //     }
+    size_t c = current_size;
+    char *current_block = ptr;
+    char *stop = NULL;
+    while (1) {
+        char *next = NEXT_BLOCK(current_block);
+        if (GET_ALLOC(HDRP(next)) || GET_SIZE(HDRP(next)) == 0) {
+            // if we can't find continuous sequence of unallocated blocks, stop
+            // if epilogue block, stop
+            break;
+        }
 
-    //     c += GET_SIZE(HDRP(next));
-    //     if (c >= block_size) {
-    //         // merge all blocks from ptr until next
-    //         PUT(FTRP(next), BLOCK_META(c, 1));
-    //         PUT(HDRP(ptr), BLOCK_META(c, 1));
-    //         return ptr;
-    //     }
+        c += GET_SIZE(HDRP(next));
+        if (c >= block_size) {
+            // merge all blocks from ptr until next
+            stop = next;
+            break;
+        }
 
-    //     current_block = next;
-    // }
+        current_block = next;
+    }
+
+    if (stop != NULL) {
+        // merge all blocks from ptr to stop
+        current_block = NEXT_BLOCK(ptr);
+        while (current_block != stop) {
+            remove_free_block_from_list(current_block);
+        }
+
+        remove_free_block_from_list(stop);
+
+        PUT(FTRP(stop), BLOCK_META(c, 1));
+        PUT(HDRP(ptr), BLOCK_META(c, 1));
+        return ptr;
+    }
 
     void *newptr = mm_malloc(size);
     if (newptr == NULL) {
