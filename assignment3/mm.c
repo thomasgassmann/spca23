@@ -69,7 +69,7 @@
 #define FREE_LIST_COUNT 128
 #define EXACT_BELOW 64
 #define LINEAR_BELOW 128
-#define LINEAR_STEP_SIZE 0x40
+#define LINEAR_STEP_SIZE 0xF0
 
 // globals
 void *heap_listp; // points to epilogue block
