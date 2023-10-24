@@ -75,8 +75,9 @@ void *heap_listp; // points to epilogue block
 void **free_listp; // points to free lists
 
 static int map_to_free_list_index(size_t size) {
-    return 0;
-    // // sizes are all aligned by ALIGNMENT, make sure smallest block size maps to 0
+    return 127;
+
+    // sizes are all aligned by ALIGNMENT, make sure smallest block size maps to 0
     // size_t base = (size - BLOCK_SIZE(1)) / ALIGNMENT;
     // size_t h = FREE_LIST_COUNT / EXACT_FRACTION;
     // if (base <= h) {
@@ -394,6 +395,7 @@ void *mm_realloc(void *ptr, size_t size) {
 
         remove_free_block_from_list(stop);
 
+        // TODO: we can maybe split the last block, similar to what place does
         PUT(FTRP(stop), BLOCK_META(c, 1));
         PUT(HDRP(ptr), BLOCK_META(c, 1));
         return ptr;
