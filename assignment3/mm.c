@@ -200,7 +200,9 @@ static void place(void *block, size_t size) {
     size_t current_size = GET_SIZE(HDRP(block));
     size_t min_block_size = BLOCK_SIZE(1);
 
-    remove_free_block_from_list(block);
+    if (!GET_ALLOC(HDRP(block))) {
+        remove_free_block_from_list(block);
+    }
 
     if (current_size - size >= min_block_size) {
         // there is enough space to fit a new block of size min_block_size
@@ -320,10 +322,10 @@ void *mm_realloc(void *ptr, size_t size) {
 
     size_t block_size = BLOCK_SIZE(size);
     size_t current_size = GET_SIZE(HDRP(ptr));
-    // if (current_size >= block_size) {
-    //     place(ptr, block_size);
-    //     return ptr;
-    // }
+    if (current_size >= block_size) {
+        place(ptr, block_size);
+        return ptr;
+    }
 
     // size_t c = current_size;
     // char *current_block = ptr;
