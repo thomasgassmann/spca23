@@ -66,9 +66,9 @@
 #define SUCC_BLOCK(bp) (*(((char **)(bp)) + 1))
 
 // how many free list there are
-#define FREE_LIST_COUNT 128
-#define EXACT_BELOW 64
-#define LINEAR_BELOW 120
+#define FREE_LIST_COUNT 196
+#define EXACT_BELOW 128
+#define LINEAR_BELOW 188
 #define LINEAR_STEP_SIZE 0x100
 
 // globals
