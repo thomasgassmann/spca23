@@ -103,7 +103,7 @@ static void *find_fit(size_t size) {
 static void remove_free_block_from_list(char *bp) {
     assert(!GET_ALLOC(HDRP(bp)));
 
-    // TODO:  we expect blocks to be removed and readded if size changes!
+    // we expect blocks to be removed and readded if size changes!
     size_t size = GET_SIZE(HDRP(bp));
     size_t free_list_index = map_to_free_list_index(size);
 
@@ -136,7 +136,7 @@ static void remove_free_block_from_list(char *bp) {
 static void add_free_block_to_list(char *bp) {
     assert(!GET_ALLOC(HDRP(bp)));
 
-    // TODO:  we expect blocks to be removed and readded if size changes!
+    // we expect blocks to be removed and readded if size changes!
     size_t size = GET_SIZE(HDRP(bp));
     size_t free_list_index = map_to_free_list_index(size);
 
@@ -411,6 +411,7 @@ void *mm_realloc(void *ptr, size_t size) {
         // TODO: we can maybe split the last block, similar to what place does
         PUT(FTRP(stop), BLOCK_META(c, 1));
         PUT(HDRP(ptr), BLOCK_META(c, 1));
+
         return ptr;
     }
 
