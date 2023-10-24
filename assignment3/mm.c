@@ -66,7 +66,10 @@
 #define SUCC_BLOCK(bp) (*(((char **)(bp)) + 1))
 
 // how many free list there are
-#define FREE_LIST_COUNT 64
+#define FREE_LIST_COUNT 128
+#define EXACT_BELOW 64
+#define LINEAR_BELOW 128
+#define LINEAR_STEP_SIZE 0x40
 
 // globals
 void *heap_listp; // points to epilogue block
@@ -75,9 +78,20 @@ void **free_listp; // points to free lists
 static int map_to_free_list_index(size_t size) {
     // sizes are all aligned by ALIGNMENT, make sure smallest block size maps to 0
     size_t base = (size - BLOCK_SIZE(1)) / ALIGNMENT;
-    size_t index = MIN(base, FREE_LIST_COUNT - 1);
-    assert(index >= 0 && index < FREE_LIST_COUNT);
-    return index;
+    if (base < EXACT_BELOW) {
+        return base;
+    }
+
+    const size_t min_linear = EXACT_BELOW * ALIGNMENT + BLOCK_SIZE(1);
+    const size_t max_linear_excl = LINEAR_STEP_SIZE * (LINEAR_BELOW - EXACT_BELOW) + min_linear;
+    const size_t linear_size = LINEAR_BELOW - EXACT_BELOW;
+    double frac = (double)(size - min_linear) / (double)(max_linear_excl - min_linear);
+    size_t off = (size_t)(frac * linear_size);
+    if (off < linear_size) {
+        return off + EXACT_BELOW;
+    }
+
+    return FREE_LIST_COUNT - 1;
 }
 
 static void *find_fit(size_t size) {
@@ -408,10 +422,11 @@ void *mm_realloc(void *ptr, size_t size) {
 
         remove_free_block_from_list(stop);
 
-        // TODO: we can maybe split the last block, similar to what place does
         PUT(FTRP(stop), BLOCK_META(c, 1));
         PUT(HDRP(ptr), BLOCK_META(c, 1));
 
+        // split next block if possible, TODO: why does this decrease utilization???
+        // place(ptr, block_size);
         return ptr;
     }
 
