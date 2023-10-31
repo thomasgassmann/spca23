@@ -60,12 +60,81 @@ for leal: %ecx = %rax + 4 * %rdx + 8
 
 ### Reading Condition Codes with C
 
+ce
+
 ## Assembly control flow
 
 ### Assembly Code Fragments
 
+a)
+
+```asm
+subl %rsi, %rdi // %rsi: b, %rdi: a
+movl %rdi, %rax
+```
+
+b)
+
+```asm
+leal (%edi, %edi, 4), %rax
+```
+
+c)
+
+```asm
+cmp $0, %edi
+```
+
 ### Conditional branches
+
+i)
+
+```c
+if (edx - eax <= 0) {
+    eax -= edx
+} else {
+    edx -= eax
+    eax = edx
+}
+```
+
+3
+
+i)
+
+```c
+if (ecx <= 0) {
+
+} else {
+    edx = 0;
+    do {
+        edx += 1;
+        eax += eax
+    } while (edx != ecx)
+}
+```
+
+if N > 0: 2^N
+if N <= 0: 1
 
 ### For loop
 
+```c
+// x: %edi, y: %esi
+// x - y >= 0 => x >= y
+int dog(int x, int y) {
+    int i, result;
+    result = 1;
+    for (i = x;  x < y; i += 2) {
+        result = i * result;
+    }
+
+    return result;
+}
+```
+
 ### Switch statement
+
+Fragment 1: does not handle default case
+Fragment 2: no, skips if a - 1 > 4
+Fragment 3: no, subtract being executed multiple times
