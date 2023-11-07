@@ -1,648 +1,461 @@
-#define MOIRA                           1
-#   define MOIRA_M2                     1
-#   define MOIRA_M3                     1
+/*
+ * mm-naive.c - The fastest, least memory-efficient malloc package.
+ *
+ * In this naive approach, a block is allocated by simply incrementing
+ * the brk pointer.  A block is pure payload. There are no headers or
+ * footers.  Blocks are never coalesced or reused. Realloc is
+ * implemented directly using mm_malloc and mm_free.
+ *
+ * NOTE TO STUDENTS: Replace this header comment with your own header
+ * comment that gives a high level description of your solution.
+ */
+#include "mm.h"
 
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-#define GENJI                           1
-#   define GENJI_ASSERT_HEAP_LISTS      0
-#   define GENJI_ASSERT_BLOCKS          0
+#include "memlib.h"
 
-// EXTRACT
-#   define  EXTRACT_ASSERT_HEAP_LISTS   0
-#   define  EXTRACT_ASSERT_VALID        0
-// INSERT
-#   define  INSERT_ASSERT_HEAP_LISTS    0
-#   define  INSERT_ASSERT_VALID         0
+/* single word (4) or double word (8) alignment */
+#define ALIGNMENT 8
 
-// unlink
-#   define  UNLINK_ASSERT_HEAP_LISTS    0
+/* rounds up to the nearest multiple of ALIGNMENT */
+#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
 
-#define GDBPASSERT_PRINT                0
+#define GET(p) (*(unsigned int *)(p))
+#define PUT(p, val) (*(unsigned int *)(p) = (val))
 
+#define BLOCK_META(size, alloc) ((int)((int)size | (int)alloc))
+#define BLOCK_META_SIZE sizeof(int)
+#define NON_SIZE_BIT_MASK (0x7)
 
-#define ASSERT                          0
-#define LOG                             0
-#   define LOG_LL                       0
-#   define LOG_MOIRA                    0
-#      define LOG_MOIRA_DUMP_HEAP       0
-#      define LOG_MOIRA_MERGES          0
-#         define LOG_MOIRA_M2          	0
-#         define LOG_MOIRA_M3          	0
-#   define LOG_NO_MEM                   0
+// get header or footer from block pointer
+#define HDRP(bp) ((char *)(bp) - BLOCK_META_SIZE)
+#define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - BLOCK_META_SIZE * 2)
 
-#if LOG_MOIRA
-FILE *moira_log;
-#endif //LOG_MOIRA
+// other useful macros
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) > (b) ? (b) : (a))
 
-size_t
-nextPowerOfTwo(size_t v) 
-{
-	v--;
-	v |= v >> 1;
-	v |= v >> 2;
-	v |= v >> 4;
-	v |= v >> 8;
-	v |= v >> 16;
-	v |= v >> 32;
-	v++;
-	return(v);
-}
+// read values from header pointer
+#define GET_SIZE(p) (GET(p) & ~NON_SIZE_BIT_MASK)
+#define GET_ALLOC(p) (GET(p) & 0x1)
 
-#define LPO2 5 // sizeof(FBlock) == 24 > (1<<4)
-int
-getCat(size_t v)
-{
-	size_t po2 = -1;
-	while(v)
-	{
-		v >>= 1;
-		po2 += 1;
-	}
-	return po2 < LPO2 ? LPO2 : po2;
-}
+// a block contains header, footer and if not allocated also at least two pointers
+#define BLOCK_SIZE(size) (ALIGN(MAX(size, 2 * sizeof(void *)) + 2 * BLOCK_META_SIZE))
 
-
-
-typedef struct Meta_T
-{
-#define M\
-	size_t used : 1;\
-	size_t size  : 5;\
-	size_t psize : 5 
-	M; 
-	/* 
-	 * We use bitfields because we can make strong assumptions about how big blocks are
-	 * But those assumptions also make this fail testcase 6, too much internal fragmentation.
-	 * :kekhands: 2022-10-26
-	 */
-	
-	/* Note(Qwendo): Into this Meta struct two more pointers could fit before
-	 * we would reach the 8 byte limit. 2022-10-26 
-	 */
-} Meta;
-
-
-#define AB 1
-#define FB 0
-
-
-#define N_S_C 25 // We have 20 * (1<<20) bytes maximum Heap size
-
-#define ALIGN_BSIZE(s) (ALIGN(s) + ALIGNEMENT - 1)
-#define blockSizeWithPayload(s) (s + sizeof(Meta))
-#define valid(x) ((mem_heap_lo() <= (void *)x )&& (mem_heap_hi() + 1 > (void *)x))
-
-typedef struct ABlockHeader_T
-{
-	M;
-	size_t   data[];// for ALIGNMENT OF 8 BYTES
-	/*
-	 * Note(Qwendo): This is not standard C, wont work on msvc (only clang and gcc support unsized arrays)
-	 * afaik 2022-10-26
-	 */
-} ABlock;
-
-typedef struct FBlockHeader_T
-{
-	M;
-	struct FBlockHeader_T *next;
-	struct FBlockHeader_T *prev;
-} FBlock;
-
-typedef struct HHeader_T
-{
-	Meta   *last;
-	FBlock *lists[N_S_C];
-} HHeader;
-
-#if ASSERT
-void
-assertHHeap()
-{
-	HHeader *h = (HHeader *)mem_heap_lo();
-	for(int i = 0; i < N_S_C; i++)
-	{
-		assert(valid(h->lists[i]) || h->lists[i] == NULL);
-	}
-}
-#endif //ASSERT
-
-#if GDBPASSERT_PRINT
-#	define gdbpassert(x) do{printf( # x ": %d\n",  !!(x)); if(!(x)){return(0);}}while(0)
+#ifdef DEBUG
+#define PRINT_DEBUG() mm_check()
 #else
-#	define gdbpassert(x) do{                               if(!(x)){return(0);}}while(0)
-#endif //GDBPASSERT_PRINT
+#define PRINT_DEBUG()
+#endif
 
-int
-cB(FBlock *a)
-{
-	gdbpassert(a);
-	gdbpassert(valid(a));
-	gdbpassert(a->used == FB || a->used == AB);
-	gdbpassert(a->size < N_S_C && (a->psize < N_S_C || (void *)a == (char *)mem_heap_lo() + sizeof(HHeader)));
-	gdbpassert(a->size >= LPO2);
-	return(1);
-}	
+// get next/prev block from block pointer
+// get size directly from current header
+#define NEXT_BLOCK(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)))
+// skip current header and read prev footer
+#define PREV_BLOCK(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - BLOCK_META_SIZE * 2))
 
-int
-checkBlock(FBlock *a)
-{
-#	if ASSERT
-	assert(a);
-	assert(valid(a));
-	assert(a->used == FB || a->used == AB);
-	assert(a->size < N_S_C && a->psize < N_S_C);
-	assert(a->size < N_S_C && (a->psize < N_S_C || (void *)a == (char *)mem_heap_lo() + sizeof(HHeader)));
-#	endif // ASSERT
-	return(1);
+// get pointers from free block
+#define SET_PRED(bp, pred) (*((char **)(bp)) = pred)
+#define SET_SUCC(bp, succ) (*(((char **)(bp)) + 1) = succ)
+#define PRED_BLOCK(bp) (*((char **)(bp)))
+#define SUCC_BLOCK(bp) (*(((char **)(bp)) + 1))
+
+// how many free list there are
+#define FREE_LIST_COUNT 196
+#define EXACT_BELOW 128
+#define LINEAR_BELOW 188
+#define LINEAR_STEP_SIZE 0x100
+
+// globals
+void *heap_listp; // points to epilogue block
+void **free_listp; // points to free lists
+
+size_t min_linear;
+size_t max_linear_excl;
+double linear_denominator;
+size_t linear_size;
+
+static void init_free_list_constants() {
+    linear_size = LINEAR_BELOW - EXACT_BELOW;
+    min_linear = EXACT_BELOW * ALIGNMENT + BLOCK_SIZE(1);
+    max_linear_excl = LINEAR_STEP_SIZE * (LINEAR_BELOW - EXACT_BELOW) + min_linear;
+    linear_denominator = max_linear_excl - min_linear;
 }
 
-void
-unlinkFB(FBlock *f)
-{
-#if UNLINK_ASSERT_HEAP_LISTS
-	assertHHeap();
-#endif //UNLINK_ASSERT_HEAP_LISTS
-	HHeader *h = (HHeader *)mem_heap_lo();
-	if(h->lists[f->size] == f) {h->lists[f->size] = f->next;}
-	if(f->prev) {f->prev->next = f->next;}
-	if(f->next) {f->next->prev = f->prev;}
-	f->next = NULL;
-	f->prev = NULL;
-#if UNLINK_ASSERT_HEAP_LISTS
-	assertHHeap();
-#endif //UNLINK_ASSERT_HEAP_LISTS
+static int map_to_free_list_index(size_t size) {
+    // sizes are all aligned by ALIGNMENT, make sure smallest block size maps to 0
+    size_t base = (size - BLOCK_SIZE(1)) / ALIGNMENT;
+    if (base < EXACT_BELOW) {
+        return base;
+    }
+
+    double frac = (size - min_linear) / linear_denominator;
+    size_t off = (size_t)(frac * linear_size);
+    if (off < linear_size) {
+        return off + EXACT_BELOW;
+    }
+
+    size_t current = max_linear_excl * 2;
+    for (int i = LINEAR_BELOW; i < FREE_LIST_COUNT - 1; i++) {
+        if (size <= current) {
+            return i;
+        }
+
+        current *= 2;
+    }
+
+    return FREE_LIST_COUNT - 1;
 }
 
+static void *find_fit(size_t size) {
+    size_t free_list_index = map_to_free_list_index(size);
+    for (int i = free_list_index; i < FREE_LIST_COUNT; i++) {
+        void *list = free_listp[i];
+        if (list == NULL) {
+            continue;
+        }
 
-#if ASSERT
-int
-search(FBlock *f)
-{
-	if(!f) return 1;
-	HHeader *h = (HHeader *)mem_heap_lo();
-	FBlock *r = h->lists[f->size];
-	while(r)
-	{
-		if(r == f) {return(1);}
-		r = r->next;
-		
-	}
-	return(0);
+        // stop at epilogue block or if free list has no more items
+        for (void *current = list; current != NULL && GET_SIZE(HDRP(current)) > 0; current = SUCC_BLOCK(current)) {
+            assert(!GET_ALLOC(HDRP(current)));
+            if (GET_SIZE(HDRP(current)) >= size) {
+                return current;
+            }
+        }
+    }
+
+    return NULL;
 }
 
-int searchAll(void * a)
-{
-	HHeader *h = (HHeader *)mem_heap_lo();
-	for(int i = 0; i < N_S_C; i++)
-	{
-			FBlock *r = h->lists[i];
-			while(r)
-			{
-				if(r == a) {return(1);}
-				r = r->next;
-			}
-	}
-	return(0);
+static void remove_free_block_from_list(char *bp) {
+    assert(!GET_ALLOC(HDRP(bp)));
+
+    // we expect blocks to be removed and readded if size changes!
+    size_t size = GET_SIZE(HDRP(bp));
+    size_t free_list_index = map_to_free_list_index(size);
+
+    char *pred = PRED_BLOCK(bp);
+    char *succ = SUCC_BLOCK(bp);
+    if (pred == NULL && succ == NULL) {
+        // this is the only block
+        free_listp[free_list_index] = NULL;
+        return;
+    }
+
+    if (pred == NULL) {
+        // this is the first block
+        SET_PRED(succ, NULL);
+        free_listp[free_list_index] = succ;
+        return;
+    }
+
+    if (succ == NULL) {
+        // this is the last block
+        SET_SUCC(pred, NULL);
+        return;
+    }
+
+    // any block in the list
+    SET_SUCC(pred, succ);
+    SET_PRED(succ, pred);
 }
 
-#endif //ASSERT
+static void add_free_block_to_list(char *bp) {
+    assert(!GET_ALLOC(HDRP(bp)));
 
-#if LOG
-void
-pR()
-{
-#	if LOG_LL
-	FILE *log_ll = fopen("LOG_LinkedLists.csv", "w+");
-#	endif //LOG_LL
-	HHeader *h = (HHeader *)mem_heap_lo();
-	for(int i = 0; i < N_S_C; i++)
-	{
-		int n = 0;
-		FBlock *r = h->lists[i];
-		while(r)
-		{
-			n++;
-			r = r->next;
-		}
-		printf("% 3d % 4d\n", i, n);
-#		if LOG_LL
-		fprintf(log_ll, "%d, %d\n", i, n);
-#		endif //LOG_LL
+    // we expect blocks to be removed and readded if size changes!
+    size_t size = GET_SIZE(HDRP(bp));
+    size_t free_list_index = map_to_free_list_index(size);
 
-	}
+    SET_PRED(bp, NULL);
+    SET_SUCC(bp, free_listp[free_list_index]);
+    if (free_listp[free_list_index] != NULL) {
+        SET_PRED(free_listp[free_list_index], bp);
+    }
+
+    free_listp[free_list_index] = bp;
 }
 
-#endif //LOG
+static void *coalesce(char *bp) {
+    size_t is_prev_alloc = GET_ALLOC(FTRP(PREV_BLOCK(bp)));
+    size_t is_next_alloc = GET_ALLOC(HDRP(NEXT_BLOCK(bp)));
+    if (is_prev_alloc && is_next_alloc) {
+        // nothing to coalesce
+        return bp;
+    }
 
-FBlock *
-extract(size_t cat)
-{
-#	if EXTRACT_ASSERT_HEAP_LISTS
-	assertHHeap();
-#	endif
+    size_t current_block_size = GET_SIZE(HDRP(bp));
+    if (is_prev_alloc && !is_next_alloc) {
+        // remove next from free list
+        remove_free_block_from_list(NEXT_BLOCK(bp));
+        remove_free_block_from_list(bp);
 
-	HHeader *h = mem_heap_lo();
-	FBlock *f = h->lists[cat];
-	if(!f) {return(NULL);}
-#	if EXTRACT_ASSERT_VALID
-	assert(valid(f) || f == NULL);
-	assert(!f || valid(f->next) || f->next == NULL);
-	assert(!f || valid(f->prev) || f->prev == NULL);
-	assert(checkBlock(f));
-#	endif //EXTRACT_ASSERT_VALID
+        // merge current with next one
+        size_t new_block_size = current_block_size + GET_SIZE(HDRP(NEXT_BLOCK(bp)));
+        PUT(HDRP(bp), BLOCK_META(new_block_size, 0));
+        // works because header was already updated
+        // update footer only after header in this case
+        PUT(FTRP(bp), BLOCK_META(new_block_size, 0));
 
-	h->lists[cat] = f->next;
-	if(h->lists[cat]) {h->lists[cat]->prev = NULL;}
+        add_free_block_to_list(bp);
+        return bp;
+    }
 
+    if (!is_prev_alloc && is_next_alloc) {
+        // remove current from free list
+        remove_free_block_from_list(bp);
+        remove_free_block_from_list(PREV_BLOCK(bp));
 
+        // merge current with prev one
+        size_t new_block_size = current_block_size + GET_SIZE(HDRP(PREV_BLOCK(bp)));
+        PUT(HDRP(PREV_BLOCK(bp)), BLOCK_META(new_block_size, 0));
+        PUT(FTRP(bp), BLOCK_META(new_block_size, 0));
 
-#	if EXTRACT_ASSERT_HEAP_LISTS
-	assertHHeap();
-#	endif
-	return(f);
+        add_free_block_to_list(PREV_BLOCK(bp));
+        return PREV_BLOCK(bp);
+    }
+
+    // remove current and next from free list
+    remove_free_block_from_list(bp);
+    remove_free_block_from_list(NEXT_BLOCK(bp));
+    remove_free_block_from_list(PREV_BLOCK(bp));
+
+    size_t new_block_size = current_block_size
+        + GET_SIZE(HDRP(NEXT_BLOCK(bp)))
+        + GET_SIZE(HDRP(PREV_BLOCK(bp)));
+
+    PUT(HDRP(PREV_BLOCK(bp)), BLOCK_META(new_block_size, 0));
+    PUT(FTRP(NEXT_BLOCK(bp)), BLOCK_META(new_block_size, 0));
+
+    add_free_block_to_list(PREV_BLOCK(bp));
+    return PREV_BLOCK(bp);
 }
 
-void
-insert(FBlock *const f)
-{
-#	if INSERT_ASSERT_HEAP_LISTS
-	assertHHeap();
-#	endif //INSERT_ASSERT_HEAP_LISTS
-#	if INSERT_ASSERT_VALID
-	assert(checkBlock(f));
-#	endif //INSERT_ASSERT_VALID
-	HHeader *h = mem_heap_lo();
-	f->next = NULL;
-	f->next = h->lists[f->size];
-	f->prev = NULL;
-	if(h->lists[f->size]) 
-	{
-		h->lists[f->size]->prev = f;
-	}
-	h->lists[f->size] = f;
+// number of bytes we want to extend the heap, not number of bytes
+static void *extend_heap(size_t bytes) {
+    size_t effective_size = ALIGN(bytes);
+    char *bp;
+    if ((long)(bp = mem_sbrk(effective_size)) == -1) {
+        return NULL;
+    }
 
-#	if ASSERT && INSERT_ASSERT_HEAP_LISTS
-	assertHHeap();
-#	endif //INSERT_ASSERT_HEAP_LISTS
+    // this overwrites the current epilogue header
+    // the size of the new block stretches until just
+    // before the new epilogue block
+    PUT(HDRP(bp), BLOCK_META(effective_size, 0));
 
-#	if ASSERT && INSERT_ASSERT_VALID
-	assert(valid(f) || f == NULL);
-	assert(!f || valid(f->next) || f->next == NULL);
-	assert(!f || valid(f->prev) || f->prev == NULL);
-	assert(checkBlock(f));
-#	endif //INSERT_ASSERT_VALID
+    PUT(FTRP(bp), BLOCK_META(effective_size, 0));
+
+    add_free_block_to_list(bp);
+
+    // set new epilogue header
+    PUT(HDRP(NEXT_BLOCK(bp)), BLOCK_META(0, 1));
+
+    // previous block might have been free, coalesce them
+    return coalesce(bp);
 }
 
-FBlock *
-splitHalf(FBlock *f, size_t n_cat)
-{
+static void place(void *block, size_t size) {
+    size_t current_size = GET_SIZE(HDRP(block));
+    size_t min_block_size = BLOCK_SIZE(1);
 
-	HHeader *h = (HHeader *)mem_heap_lo();
-#	if ASSERT
-	FBlock fp = *f;
-	assert(checkBlock(f));
-	assert(f->size >= LPO2);
-	assert(f->size - 1 == n_cat);
-#	endif // ASSERT
-	char *next   = (char*)f + (1<<f->size);
-	ABlock *an = NULL;
+    if (!GET_ALLOC(HDRP(block))) {
+        remove_free_block_from_list(block);
+    }
 
-	char *second = (char*)f + (1<<n_cat);
-	if(h->last == (Meta *)f) {h->last = (Meta *)second;}
-	FBlock *s = (FBlock *)second;
-	s->size  = n_cat;	
-	f->size  = n_cat;
-	s->psize = f->size; 
-	s->next  = NULL;
-	s->prev  = NULL;
-	s->used  = FB;
-	if(valid(next)) 
-	{
-		an = (ABlock *)next;
-		an->psize = s->size;
-	}
-#	if ASSERT
-	assert(checkBlock(s));
-	assert(checkBlock((FBlock *)h->last));
-	assert(checkBlock(f));
-	assert(f->size == fp.size - 1);
-	assert(f->psize == fp.psize);
-	assert(f->used == fp.used);
-#	endif //ASSERT
-	insert(s);
-	return(f);
+    if (current_size - size >= min_block_size) {
+        // there is enough space to fit a new block of size min_block_size
+        // we assume size is aligned to 8 bytes
+        PUT(HDRP(block), BLOCK_META(size, 1));
+        PUT(FTRP(block), BLOCK_META(size, 1));
+        char *next_block = NEXT_BLOCK(block);
+        PUT(HDRP(next_block), BLOCK_META((current_size - size), 0));
+        PUT(FTRP(next_block), BLOCK_META((current_size - size), 0));
+
+        add_free_block_to_list(next_block);
+
+        return;
+    }
+
+    PUT(HDRP(block), BLOCK_META(current_size, 1));
+    PUT(FTRP(block), BLOCK_META(current_size, 1));
 }
 
-void
-dumpHeapLists(FILE *f)
-{
-	HHeader *h = (HHeader *)mem_heap_lo();
-	for(int i = 0; i < N_S_C; i++)
-	{
-		int c = 0;
-		FBlock *r = h->lists[i];
-		while(r)
-		{
-			c++;
-			r = r->next;
-		}
-		fprintf(f, "% 3d, %d\n",i, c);
-	}
+void mm_check() {
+    int i = 0;
+    char *current;
+    printf("\n\n--- CURRENT BLOCKS ---\n");
+    for (current = heap_listp; GET_SIZE(HDRP(current)) > 0; current = NEXT_BLOCK(current)) {
+        char *header_p = HDRP(current);
+        printf("block %d(size=0x%x, addr=%p, alloc=%d)\n", i, GET_SIZE(header_p), current, GET_ALLOC(header_p));
+
+        i++;
+    }
+
+    printf("epilogue block(size=0x%x, addr=%p, alloc=%d)\n", GET_SIZE(HDRP(current)), current, GET_ALLOC(HDRP(current)));
+    printf("Found a total of %d blocks\n", i + 1);
+
+    printf("\n--- FREE BLOCKS ---\n");
+    for (int i = 0; i < FREE_LIST_COUNT; i++) {
+        if (free_listp[i] != NULL) {
+            printf("--- starting list %d ---\n", i);
+        }
+
+        int j = 0;
+        for (current = free_listp[i]; current != NULL; current = SUCC_BLOCK(current)) {
+            char *header_p = HDRP(current);
+
+            unsigned int current_size = GET_SIZE(header_p);
+            size_t expected_index = map_to_free_list_index(current_size);
+            assert(i == expected_index);
+
+            printf("block %d(size=0x%x, addr=%p, alloc=%d)\n", j++, current_size, current, GET_ALLOC(header_p));
+        }
+    }
 }
 
-void
-dumpHeap(FILE *f)
-{
-	fprintf(f, "[\n");
-	Meta *a = (Meta *)((char *)mem_heap_lo() + ALIGN(sizeof(HHeader)));
-	while(valid(a))
-	{
-		fprintf(f, "{\"kind\": \"%c\", \"size\": %zu}",a->used == FB ? 'f' : 'u', (size_t)1<<a->size);
-		a = (Meta *)((char *)a + (1<<a->size));
-		if(valid(a)) fprintf(f, ",\n");
-	}
-	fprintf(f, "\n]");
+/*
+ * mm_init - initialize the malloc package.
+ */
+int mm_init(void) {
+    heap_listp = NULL;
+    init_free_list_constants();
+
+    // init free lists
+    if ((free_listp = mem_sbrk(sizeof(void *) * FREE_LIST_COUNT)) == (void *)-1) {
+        return -1;
+    }
+
+    for (int i = 0; i < FREE_LIST_COUNT; i++) {
+        free_listp[i] = NULL;
+    }
+
+    // prologue and epilogue block do not contain pointers
+    int prologue_block_size = 2 * BLOCK_META_SIZE;
+    if ((heap_listp = mem_sbrk(2 * prologue_block_size)) == (void *)-1) {
+        return -1;
+    }
+
+    PUT(heap_listp + 0 * BLOCK_META_SIZE, 0); // padding
+    PUT(heap_listp + 1 * BLOCK_META_SIZE, BLOCK_META(prologue_block_size, 1)); // prologue header
+    PUT(heap_listp + 2 * BLOCK_META_SIZE, BLOCK_META(prologue_block_size, 1)); // prologue footer
+    PUT(heap_listp + 3 * BLOCK_META_SIZE, BLOCK_META(0, 1)); // epilogue header
+
+    heap_listp += 2 * BLOCK_META_SIZE; // heap_listp is going to point to the first block content (size 0)
+    if (extend_heap(mem_pagesize()) == NULL) {
+        return -1;
+    }
+
+    return 0;
 }
 
+/*
+ * mm_malloc - Allocate a block by incrementing the brk pointer.
+ *     Always allocate a block whose size is a multiple of the alignment.
+ */
+void *mm_malloc(size_t size) {
+    if (size == 0) {
+        return NULL;
+    }
 
-void
-documentHeap()
-{
-	static int rq = 0;
-	char fname[100];
-	sprintf(fname, "dumps/list_dump%05d.csv", rq);
-	FILE *dump = fopen(fname, "w+");
-	dumpHeapLists(dump);
-	fclose(dump);
-	sprintf(fname, "vis/dump/dump-%05d.json", rq);
-	dump = fopen(fname, "w+");
-	dumpHeap(dump);
-	fclose(dump);
-	rq++;
+    size_t block_size = BLOCK_SIZE(size);
+    char *bp;
+    if ((bp = find_fit(block_size)) != NULL) {
+        place(bp, block_size);
+        return bp;
+    }
+
+    if ((bp = extend_heap(MAX(block_size, mem_pagesize()))) == NULL) {
+        return NULL;
+    }
+
+    place(bp, block_size);
+    return bp;
 }
 
-#if MOIRA
-void
-mergeTwo(FBlock *l, FBlock *t)
-{
-#	if MOIRA_M2
-	char *next    = (char *)t + (1<<t->size);
-	Meta *n       = (Meta *)next;
-	size_t combined_sizes = (1<<t->size) + (1<<l->size);
-	if(combined_sizes == nextPowerOfTwo(combined_sizes))
-	{
-#		if LOG && LOG_MOIRA && LOG_MOIRA_MERGES && LOG_MOIRA_M2
-		printf("%d %d\n",l->size, t->size);
-#		endif //LOG_MOIRA_M2
-		size_t cat = getCat(nextPowerOfTwo(combined_sizes));
-		unlinkFB(t);
-		unlinkFB(l);
-		l->size = cat;
-		n->psize = cat;
-		insert(l);
-#		if ASSERT
-		assert(!searchAll(t));
-		assert(search(l));
-#		endif //ASSERT
-		return;
-	}
-#	endif // MOIRA_M2
-}
-#endif //MOIRA
+/*
+ * mm_free - Freeing a block does nothing.
+ */
+void mm_free(void *ptr) {
+    size_t size = GET_SIZE(HDRP(ptr));
 
+    PUT(HDRP(ptr), BLOCK_META(size, 0));
+    PUT(FTRP(ptr), BLOCK_META(size, 0));
+    add_free_block_to_list(ptr);
 
-#if MOIRA
-void
-mergeThree(FBlock *l, FBlock *m, FBlock *t)
-{
-#	if MOIRA_M3
-	size_t s_lmt = (1<<l->size) + (1<<m->size) + (1<<t->size);
-	size_t s_mt  =                (1<<m->size) + (1<<t->size);
-	size_t s_lm  = (1<<l->size) + (1<<m->size)               ;
-	if(s_lmt == nextPowerOfTwo(s_lmt))
-	{
-
-		char *next = (char *)t + (1<<t->size);
-		Meta *n    = (Meta *)next;
-		size_t cat = getCat(s_lmt);
-#		if LOG && LOG_MOIRA && LOG_MOIRA_MERGES && LOG_MOIRA_M3
-		printf("%d %d %d -> %d\n",l->size,m->size, t->size, cat);
-#		endif //LOG_MOIRA_M3
-		unlinkFB(l);
-		unlinkFB(m);
-		unlinkFB(t);
-		l->size = cat;
-		n->psize = cat;
-		insert(l);
-		
-	}else if(s_mt == nextPowerOfTwo(s_mt))
-	{
-		mergeTwo(m,t);
-	}else if(s_lm == nextPowerOfTwo(s_lm))
-	{
-		mergeTwo(l,m);
-	}
-#	endif //MOIRA_M3
-}
-#endif //MOIRA
-
-void
-moira(FBlock *f)
-{
-#	if MOIRA
-
-#	if LOG_MOIRA
-	static size_t request_number = 0;
-	fprintf(moira_log, "%zu, %u,\n", request_number++, f->size);
-#	if LOG_MOIRA_DUMP_HEAP
-	if(request_number % 10000 == 0)
-	{
-		documentHeap();
-	}
-#	endif //LOG_MOIRA_DUMP_HEAP
-#endif // LOG_MOIRA
-
-	char *n_c = (char *)f + (1<<f->size);
-	char *p_c = (char *)f - (1<<f->psize);
-	FBlock *n = (FBlock *)n_c;
-	n = valid(n) && n->used == FB ? n : NULL;
-	FBlock *p = (FBlock *)p_c;
-	p = valid(p) && p->used == FB ? p : NULL;
-	int c = 0 + (!!n) + ((!!p)<<1);
-	switch(c)
-	{
-	case 0:
-	default: break;
-	break;case 1:
-		mergeTwo(f, n);
-	break;case 2:
-		mergeTwo(p, f);
-	break;case 3:
-		mergeThree(p,f,n);
-	break;
-	}
-
-#	endif // MOIRA
+    coalesce(ptr);
 }
 
-FBlock *
-genji(size_t block_size)
-{
-#	if GENJI
+/*
+ * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
+ */
+void *mm_realloc(void *ptr, size_t size) {
+    if (ptr == NULL) {
+        return mm_malloc(size);
+    }
 
-#	if ASSERT && GENJI_ASSERT_HEAP_LISTS
-	assertHHeap();
-#	endif //GENJI_ASSERT_HEAP_LISTS
+    if (size == 0) {
+        mm_free(ptr);
+        return NULL;
+    }
 
-	HHeader *h = (HHeader *)mem_heap_lo();
-	size_t cat = getCat(block_size);
-	size_t found_cat = 0;
-	for(int i = cat + 1; i < N_S_C; i++)
-	{
-		if(h->lists[i]) 
-		{
-			found_cat = i;
-			break;
-		}
-	}
-	if(!found_cat) {return(NULL);}
-	FBlock *r = extract(found_cat);
+    size_t block_size = BLOCK_SIZE(size);
+    size_t current_size = GET_SIZE(HDRP(ptr));
+    if (current_size >= block_size) {
+        place(ptr, block_size);
+        return ptr;
+    }
 
-#	if ASSERT && GENJI_ASSERT_BLOCKS
-	assert(checkBlock(r));
-#	endif // GENJI_ASSERT_BLOCKS
+    size_t c = current_size;
+    char *current_block = ptr;
+    char *stop = NULL;
+    while (1) {
+        char *next = NEXT_BLOCK(current_block);
+        if (GET_ALLOC(HDRP(next)) || GET_SIZE(HDRP(next)) == 0) {
+            // if we can't find continuous sequence of unallocated blocks, stop
+            // if epilogue block, stop
+            break;
+        }
 
-	if(h->last == (Meta *)r)
-	{
-		size_t n_cat = found_cat - 1;
-		r = splitHalf(r, n_cat);
-		found_cat = n_cat;
-	}
+        c += GET_SIZE(HDRP(next));
+        if (c >= block_size) {
+            // merge all blocks from ptr until next
+            stop = next;
+            break;
+        }
 
-#	if ASSERT && GENJI_ASSERT_BLOCKS
-	assert(checkBlock(r));
-#	endif // GENJI_ASSERT_BLOCKS
+        current_block = next;
+    }
 
-#	if ASSERT && GENJI_ASSERT_HEAP_LISTS
-	assertHHeap();
-#	endif //GENJI_ASSERT_HEAP_LISTS
+    if (stop != NULL) {
+        // merge all blocks from ptr to stop
+        current_block = NEXT_BLOCK(ptr);
+        while (current_block != stop) {
+            remove_free_block_from_list(current_block);
+        }
 
+        remove_free_block_from_list(stop);
 
-	for(int i = found_cat; i > cat; i--)
-	{
-		size_t n_cat = i - 1;
-		r = splitHalf(r, n_cat);
-	}
+        PUT(FTRP(stop), BLOCK_META(c, 1));
+        PUT(HDRP(ptr), BLOCK_META(c, 1));
 
-#	if ASSERT && GENJI_ASSERT_HEAP_LISTS
-	assertHHeap();
-#	endif //GENJI_ASSERT_HEAP_LISTS
-	return(r);
-#	endif //GENJI
-	return NULL;
-}
+        // split next block if possible, TODO: why does this decrease utilization???
+        // place(ptr, block_size);
+        return ptr;
+    }
 
-HHeader *h = NULL;
+    void *newptr = mm_malloc(size);
+    if (newptr == NULL) {
+        return NULL;
+    }
 
-FBlock *
-ana(size_t block_size)
-{
-	HHeader *h = (HHeader *)mem_heap_lo();
-	FBlock *f = mem_sbrk(block_size);
-	if(!f || !~(size_t)f) {return(NULL);}
-	memset(f, 0xFF, sizeof(FBlock));
-	f->psize = h->last ? h->last->size : 0;
-	h->last = (Meta *)f;
-	return(f);
-}
-
-int
-mm_init(void)
-{
-#if LOG_MOIRA
-	moira_log = fopen("moira.csv", "wa");
-#endif //LOG_MOIRA
-	h = mem_sbrk(ALIGN(sizeof(HHeader)));
-	memset(h, 0, sizeof(HHeader));
-	return(0);
-}
-
-void *
-mm_malloc(size_t s)
-{
-	size_t size_with_payload = blockSizeWithPayload(ALIGN(s));
-	size_t request_size = nextPowerOfTwo(size_with_payload);
-	size_t cat = getCat(request_size);
-	FBlock *f = extract(cat); 
-	if(!f)
-	{
-		f = genji(request_size);        // splitting first
-		if(!f) {f = ana(request_size);} // extend heap second 
-		if(!f)                          // fail else kekw
-		{
-#			if LOG_NO_MEM
-			printf("size rq = %zu\ncat = %zu\n", s, cat);
-			documentHeap();
-#			endif //LOG_NO_MEM
-			return(NULL);
-		}          // fail third
-	}
-	f->size = cat;
-	f->used = AB;
-#	if ASSERT
-	checkBlock(f);
-#	endif //ASSERT
-	ABlock *a = (ABlock *)f;
-	memset(a->data, 0xFF, (1<<a->size) - sizeof(ABlock));
-
-#	if ASSERT
-	size_t align = a->data;
-	assert(align == ALIGN(align));
-#	endif//ASSERT
-	return(a->data);
-}
-
-
-void 
-mm_free(void *ptr)
-{
-	FBlock *f = (FBlock *)((char *)ptr - sizeof(ABlock));
-#	if ASSERT
-	assert(ptr == ((ABlock *)f)->data);
-#	endif //ASSERT
-	size_t cat  = f->size;
-	size_t pcat = f->psize;
-	memset(f, 0xFF, 1<<f->size); 
-	f->used  = FB;
-	f->size  = cat;
-	f->psize = pcat;
-#	if ASSERT
-	assert(f->size < 64);
-#	endif //ASSERT
-	insert(f);
-	moira(f);
-}
-
-void *
-mm_realloc(void *ptr, size_t s)
-{
-	size_t request_size = blockSizeWithPayload(s);
-	FBlock *f = (FBlock *)((char *)ptr - sizeof(ABlock));
-	size_t cat = f->size;
-	size_t available_size = (1<<cat);
-	if(request_size < available_size) {return(ptr);};
-	void *n_ptr = mm_malloc(s);
-	if(!n_ptr) {return(NULL);};
-	memcpy(n_ptr, ptr, available_size);
-	mm_free(ptr);
-	return(n_ptr);
-}
-
-void
-mm_deinit()
-{
-#	if LOG
-	//documentHeap();
-#	endif //LOG
+    size_t copySize = MIN(current_size - 2 * BLOCK_META_SIZE, size);
+    memcpy(newptr, ptr, copySize);
+    mm_free(ptr);
+    return newptr;
 }
