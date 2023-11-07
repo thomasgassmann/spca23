@@ -30,14 +30,14 @@ int F[4];       a) 4 bytes      b) 16 bytes        c) F + 4 * i     d) F[i], i[F
 
 ### Arithmetic operations
 
-| Instruction                 | Destination | Computation and result  |
-| --------------------------- | ----------- | ----------------------- |
-| addl %eax, (%rcx)           | memory      | M(0x204) = 0x2          |
-| subl %edx, 4(%rcx)          | memory      | M(0x208) = 0x3          |
-| imull (%rcx, %rax, 4), %eax | register    | %eax = 0x20C            |
-| incl 8(%rcx)                | memory      | M(0x20C) = M(0x20C) + 1 |
-| decl %eax                   | register    | %eax = %eax - 1         |
-| subl %edx, %ecx             | register    | %ecx = 0x201            |
+| Instruction                 | Destination | Computation and result   |
+| --------------------------- | ----------- | ------------------------ |
+| addl %eax, (%rcx)           | memory      | M(0x204) += 0x2          |
+| subl %edx, 4(%rcx)          | memory      | M(0x208) -= 0x3          |
+| imull (%rcx, %rax, 4), %eax | register    | %eax *= 0x21             |
+| incl 8(%rcx)                | memory      | M(0x20C) += M(0x20C) + 1 |
+| decl %eax                   | register    | %eax = %eax - 1          |
+| subl %edx, %ecx             | register    | %ecx = 0x201             |
 
 ### leal and movl
 
@@ -68,6 +68,8 @@ ce
 
 a)
 
+correction: don't use 64bit regs
+
 ```asm
 subl %rsi, %rdi // %rsi: b, %rdi: a
 movl %rdi, %rax
@@ -75,11 +77,18 @@ movl %rdi, %rax
 
 b)
 
+correction: don't use 64bit regs, should be (%rdi,%rdi,4), %eax
+
+- 64 bit regsfor address calculation
+- 32 bit reg for dest because l suffix
+
 ```asm
 leal (%edi, %edi, 4), %rax
 ```
 
 c)
+
+correction: cmpl
 
 ```asm
 cmp $0, %edi
@@ -98,7 +107,7 @@ if (edx - eax <= 0) {
 }
 ```
 
-3
+|a - d|
 
 i)
 
@@ -135,6 +144,6 @@ int dog(int x, int y) {
 
 ### Switch statement
 
-Fragment 1: does not handle default case
+Fragment 1: does not handle default case, correction: it does handle the default case
 Fragment 2: no, skips if a - 1 > 4
 Fragment 3: no, subtract being executed multiple times
