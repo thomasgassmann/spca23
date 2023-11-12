@@ -1,0 +1,33 @@
+4)
+
+a = <14 b = %d = 15
+xxxxxx
+
+func4(a, 0, 14) == 15
+
+10
+9
+8
+7
+6
+
+5)
+
+xxxxxxx == 54
+
+each iteration i:
+
+array has 16 integer entries
+
+since string is 6 long, we want something like 54/6 = 9
+
+array[6] = 9
+
+rcx += array[ (string[i] & 0xf) ]
+
+we need to choose a char c in string such that (c & 0xf) == 6 == 0b110
+
+we want a printable character ending in 0110, for example f
+
+6)
+6 1 5 3 4 5

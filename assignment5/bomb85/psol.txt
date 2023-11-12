@@ -1,4 +1,5 @@
 I am just a renegade hockey mom.
 1 2 4 8 16 32
 1 343
-<14 %d
+5 15
+ffffff
