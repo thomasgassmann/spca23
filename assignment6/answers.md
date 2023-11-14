@@ -6,7 +6,7 @@ a) We pass `age` instead of `&age` to `scanf`.
 
 b) We don't free `x`. Free it.
 
-c) We cannot assume that the values of `y` are zero-ed out.
+c) We cannot assume that the values of `y` are zero-ed out, check return value of malloc.
 
 ## Symbol table
 
@@ -26,7 +26,7 @@ a)
 REF(x.1) => DEF(x.1)
 REF(x.2) => DEF(x.1)
 REF(y.1) => DEF(y.2)
-REF(y.1) => DEF(y.2)
+REF(y.2) => DEF(y.2)
 
 b)
 
@@ -46,13 +46,15 @@ d)
 
 REF(z.1) -> DEF(z.2)
 REF(z.2) -> DEF(z.2)
-REF(x.1) -> ERROR
-REF(x.2) -> ERROR
+REF(x.1) -> DEF(x.1)
+REF(x.2) -> DEF(x.1)
 REF(y.1) -> DEF(y.1)
 REF(y.2) -> DEF(y.1)
 ```
 
 ## Relocating Absolute References
+
+the following should be little-endian
 
 | Line number | Address | Value                   |
 | ----------- | ------- | ----------------------- |
