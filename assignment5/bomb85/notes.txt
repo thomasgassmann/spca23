@@ -35,4 +35,60 @@ we want a printable character ending in 0110, for example f
 all six values <= 6
 check all 6 values different
 for all values x calculate 7 - x 
-000018ef
+
+node values:
+node1: (333, 1, node2)
+node2: (317, 2, node3)
+node3: (253, 3, node4)
+node4: (117, 4, node5)
+node5: (53, 5, node6)
+node6: (742, 6, null)
+
+for each i let node[i] be the values[i]-th node (e.g. value 1 gets node 1, etc.)
+
+sort in descending order
+
+node6@10: (742, 6, null)
+node1@30: (333, 1, node2)
+node2@40: (317, 2, node3)
+node3@50: (253, 3, node4)
+node4@60: (117, 4, node5)
+node5@70: (53, 5, node6)
+
+6 1 2 3 4 5
+
+but we calculate 7 - x, so take inverse
+
+1 6 5 4 3 2
+
+current - next >= 0 => current >= next
+
+
+secret phase:
+number <= 1000
+
+n1 in data section has value 36
+
+at n1:         36
+at n1 + 0x10:  32
+
+
+
+fun7(&n1, number) == 1
+
+i.e. fun(36, number) == 1
+
+what does fun do? see fun7.c
+
+we want 1 as output, therefore:
+
+first call: *n1 != number, second recursive call *(n1 + 4) == number
+
+first call needs to do 1 + 2 * ..., all further calls need to go through 2 * ... until they eventually reach zero, so we end up with 1
+
+1: 36
+2: 32
+3: 45
+4: 40
+
+therefore choose 40, since it's the first that decreases in value
