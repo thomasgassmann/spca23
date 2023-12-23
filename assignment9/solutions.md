@@ -39,6 +39,3 @@ d) here the read also does not depend on a previous store, therefore we should e
 ## Reflection
 
 scales slightly below expected complexity of O(n^3), effect of caches
-
-## Determining the Bottleneck
-
