@@ -53,6 +53,19 @@
             "externalConsole": false,
             "MIMode": "gdb",
             "preLaunchTask": "malloc-lab-debug"
+        },
+        {
+            "name": "float lab",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/assignment8-ce/tests",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/assignment8-ce",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "float-lab-debug"
         }
     ]
 }

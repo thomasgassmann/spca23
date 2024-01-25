@@ -13,6 +13,19 @@
             },
             "problemMatcher": "$gcc"
         },
+        {
+            "label": "float-lab-debug",
+            "type": "shell",
+            "command": "make clean && make tests",
+            "options": {
+                "cwd": "${workspaceFolder}/assignment8-ce"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
+        }
     ],
     "version": "2.0.0"
 }
