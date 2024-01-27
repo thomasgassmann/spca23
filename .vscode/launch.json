@@ -66,6 +66,19 @@
             "externalConsole": false,
             "MIMode": "gdb",
             "preLaunchTask": "float-lab-debug"
+        },
+        {
+            "name": "float lab (master)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/assignment8-ce/master",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/assignment8-ce",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "float-lab-master"
         }
     ]
 }

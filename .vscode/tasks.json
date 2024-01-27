@@ -25,6 +25,19 @@
                 "isDefault": true
             },
             "problemMatcher": "$gcc"
+        },
+        {
+            "label": "float-lab-master",
+            "type": "shell",
+            "command": "make clean && make master",
+            "options": {
+                "cwd": "${workspaceFolder}/assignment8-ce"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
         }
     ],
     "version": "2.0.0"

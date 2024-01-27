@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 
 union float_converter {
   uint32_t intval;
@@ -14,13 +15,14 @@ typedef struct internal_t {
   uint8_t sign;
   uint8_t is_inf;
   uint8_t is_nan;
-  int32_t exponent;
-  uint64_t mantissa;
+  int32_t exponent; // the actual, effective exponent
+  uint64_t mantissa; // value to be multiplied with exponent
 } internal_t;
 
 #define B BIAS(EXPONENT_BITS)
 #define LARGEST_NORMALIZED_EXPONENT 0xFE
-#define IS_MAX_EXP(exp) (exp == 0xFF)
+#define MAX_EXP 0xFF
+#define IS_MAX_EXP(exp) (exp == MAX_EXP)
 
 bool is_zero(float_t f) {
   return f.mantissa == 0 && f.exponent == 0;
@@ -121,14 +123,34 @@ float_t fp_negate(float_t a) {
   return a;
 }
 
-void shift_right_mantissa(internal_t *value) {
-  value->exponent++;
-  value->mantissa >>= 1;
-  
+void shift_right_mantissa(internal_t *value, int amount) {
   // check overflow
-  if (IS_MAX_EXP(value->exponent)) {
+  if (MAX_EXP <= value->exponent + amount) {
     value->is_inf = 1;
+    return;
   }
+
+  value->exponent += amount;
+
+  uint64_t current_mantissa = value->mantissa;
+  uint64_t guard_bit = (current_mantissa >> amount) & 1;  
+  uint64_t round_bit = (current_mantissa >> (amount - 1)) & 1;
+  uint64_t sticky_mask = ((uint64_t)(1) << (amount - 1)) - 1;
+  uint64_t sticky_bits = current_mantissa & sticky_mask;
+  uint64_t sticky_bit = !!sticky_bits;
+  if (guard_bit && round_bit && !sticky_bit) {
+    // round to even
+
+  } else if (round_bit && sticky_bit) {
+    // round up
+    value->mantissa >>= amount;
+    value->mantissa++; // TODO: this might overflow again, need to postnormalize 
+  } else {
+    // we can just shift things out
+    value->mantissa >>= amount;
+  }
+
+
 }
 
 float_t to_ieee754(internal_t value) {
@@ -145,24 +167,28 @@ float_t to_ieee754(internal_t value) {
 
   float_t res = {value.sign, 0, 0};
   uint64_t rest = value.mantissa >> FRAC_BITS;
-  res.mantissa = value.mantissa & ((1 << FRAC_BITS) - 1);
-  res.exponent = value.exponent;
+  uint64_t mantissa_mask = ((1 << FRAC_BITS) - 1);
+  uint64_t mantissa_cutoff = value.mantissa & mantissa_mask;
   if (rest > 1) {
+    int amount = 0;
     while (rest > 1) {
-      shift_right_mantissa(&res);
+      amount++;
       rest >>= 1;
     }
 
-    res.exponent += B;
+    shift_right_mantissa(&value, amount);
+    res.exponent = value.exponent + B + FRAC_BITS;
+    res.mantissa = value.mantissa & mantissa_mask;
   } else if (rest == 0) {
     // shift upwards, number might get denormalized
-    res.exponent += B - 1;
+    res.exponent = value.exponent + B - 1 + FRAC_BITS;
+    res.mantissa = mantissa_cutoff;
   } else {
     // we already have a leading 1
-    res.exponent += B;
+    res.exponent = value.exponent + B + FRAC_BITS;
+    res.mantissa = mantissa_cutoff;
   }
 
-  
   return res;
 }
 
@@ -181,18 +207,58 @@ internal_t from_ieee754(float_t value) {
   
   if (is_normalized(value)) {
     res.mantissa = value.mantissa | (1 << FRAC_BITS);
-    res.exponent = value.exponent - B;
+    res.exponent = value.exponent - B - FRAC_BITS;
   } else {
     // must be denormalized, i.e. value.exponent == 0
     assert(value.exponent == 0);
     res.mantissa = value.mantissa;
-    res.exponent = - B + 1;
+    res.exponent = - B + 1 - FRAC_BITS;
   }
   
   return res;
 }
 
+void shift_right_as_much_as_possible(internal_t *value, int max) {
+  uint64_t c = value->mantissa & (uint64_t)1;
+  int it = 0;
+  while (c == 0) {
+    // as long as the lowest bit is not set, we can safely shift out things and decrease the exponent
+    value->exponent++;
+    value->mantissa >>= 1;
+
+    c = value->mantissa & 1;
+
+    it++;
+    if (it >= max) {
+      return;
+    }
+  }
+}
+
+void shift_left_as_much_as_possible(internal_t *value, int max) {
+  uint64_t mask = (uint64_t)1 << 62; // the highest bit should always be 0
+  // if the highest bit was not zero for both values an addition might overflow
+  uint64_t c = value->mantissa & mask;
+  int it = 0;
+  while (c == 0) {
+    // as long as the highest bit is not set, we can safely shift out things and increase the exponent
+    value->exponent--;
+    value->mantissa <<= 1;
+
+    c = value->mantissa & mask;
+
+    it++;
+    if (it >= max) {
+      return;
+    }
+  }
+}
+
 internal_t add(internal_t a, internal_t b) {
+  if (a.mantissa == 0 || b.mantissa == 0) {
+    return a.mantissa == 0 ? b : a;
+  }
+
   if ((a.is_inf && b.is_inf && a.sign != b.sign) || a.is_nan || b.is_nan) {
     internal_t not_a_number = {0, 0, 1, 0, 0};
     return not_a_number;
@@ -201,19 +267,34 @@ internal_t add(internal_t a, internal_t b) {
   if (a.is_inf || b.is_inf) {
     return a.is_inf ? a : b;
   }
-  
+
   if (b.exponent > a.exponent) {
     internal_t tmp = a;
     a = b;
     b = tmp;
   }
-  
+
+  // we assume a and b are "normalized" in the sense that not more than
+  // the 24 least significant bits are set in the mantissa (i.e. 23 frac bits
+  // and 1 implied bit that we might have added).
+
+  // using b.exponent as the new exponent is a bad idea because we might need
+  // to shift things outside
+
+  // TODO: they might have different sign
   // a.exponent >= b.exponent
   int diff = a.exponent - b.exponent;
-  internal_t result = {0, 0, 0, a.exponent, 0};
+  // make exponent of b larger (not more than diff)
+  shift_right_as_much_as_possible(&b, diff);
+  diff = a.exponent - b.exponent;
+  // make exponent of a smaller
+  shift_left_as_much_as_possible(&a, diff);
+  diff = a.exponent - b.exponent;
   
-  int64_t shifted = b.mantissa >> diff;
-  int64_t first = a.mantissa;
+  internal_t result = {0, 0, 0, b.exponent, 0};
+  
+  int64_t shifted = b.mantissa;
+  int64_t first = a.mantissa << diff;
   
   result.mantissa = first + shifted;
   

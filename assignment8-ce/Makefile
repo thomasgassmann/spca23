@@ -7,5 +7,8 @@ OBJS = lib.o tests.o
 tests: lib.c tests.c lib.h
 	$(CC) $(CFLAGS) $(LIBS) -o tests lib.c lib.h tests.c
 
+master:
+	$(CC) $(CFLAGS) $(LIBS) -o master master.c lib.h tests.c
+
 clean:
-	rm -f *~ *.o tests
+	rm -f *~ *.o tests master
