@@ -16,7 +16,7 @@
         {
             "label": "float-lab-debug",
             "type": "shell",
-            "command": "make clean && make tests",
+            "command": "make clean && make DEBUG=1",
             "options": {
                 "cwd": "${workspaceFolder}/assignment8-ce"
             },

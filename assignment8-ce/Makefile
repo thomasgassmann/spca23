@@ -1,6 +1,13 @@
 CC = gcc
-CFLAGS = -Wall -g -D DEBUG
+CFLAGS = -Wall
 LIBS = -lm
+
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+    CFLAGS+= -g -D DEBUG
+else
+	CFLAGS+= -O2
+endif
 
 OBJS = lib.o tests.o
 
