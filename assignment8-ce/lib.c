@@ -298,13 +298,13 @@ void shift_left_to_mantissa_position(internal_t *value) {
 }
 
 internal_t add(internal_t a, internal_t b) {
-  if (a.mantissa == 0 || b.mantissa == 0) {
-    return a.mantissa == 0 ? b : a;
-  }
-
   if ((a.is_inf && b.is_inf && a.sign != b.sign) || a.is_nan || b.is_nan) {
     internal_t not_a_number = {0, 0, 1, 0, 0};
     return not_a_number;
+  }
+
+  if (a.mantissa == 0 || b.mantissa == 0) {
+    return a.mantissa == 0 ? b : a;
   }
   
   if (a.is_inf || b.is_inf) {
@@ -339,7 +339,7 @@ internal_t add(internal_t a, internal_t b) {
     }
   }
 
-  if (diff <= FRAC_BITS) {
+  if (diff <= 64 - FRAC_BITS - 1) {
     // the mantiassas overlap (potentially) at least in some bits
     // we can safely shift a.mantissa to the left because we assume
     // the numbers to be "normalized" as described above
@@ -354,23 +354,23 @@ internal_t add(internal_t a, internal_t b) {
     // bits to a. these two bits will behave the same as the GRS bits
 
     // TODO: i think the following is broken?
-    result.exponent = a.exponent - 2;
-    result.mantissa = a.mantissa << 2;
+    result.exponent = a.exponent;
+    result.mantissa = a.mantissa;
 
-    // the two right most bits are 0 now, we set them according to the rounding
-    // behavior of b
-    if (diff == FRAC_BITS) {
-      // rounding can only occur if we shift exaclty by FRAC_BITS
-      // otherwise we always round down, which is equivalent to leaving
-      // the last two bits zero
-      int64_t round_bit = b.mantissa >> FRAC_BITS;
-      result.mantissa |= (round_bit << 1);
+    // // the two right most bits are 0 now, we set them according to the rounding
+    // // behavior of b
+    // if (diff == FRAC_BITS) {
+    //   // rounding can only occur if we shift exaclty by FRAC_BITS
+    //   // otherwise we always round down, which is equivalent to leaving
+    //   // the last two bits zero
+    //   int64_t round_bit = b.mantissa >> FRAC_BITS;
+    //   result.mantissa |= (round_bit << 1);
 
-      // the lower 23 bits
-      int64_t sticky_bits = b.mantissa & 0x7FFFFF;
-      int64_t sticky_bit = !!sticky_bits;
-      result.mantissa |= sticky_bit;
-    }
+    //   // the lower 23 bits
+    //   int64_t sticky_bits = b.mantissa & 0x7FFFFF;
+    //   int64_t sticky_bit = !!sticky_bits;
+    //   result.mantissa |= sticky_bit;
+    // }
   }
 
   if (a.sign != b.sign) {
