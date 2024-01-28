@@ -330,13 +330,13 @@ internal_t add(internal_t a, internal_t b) {
     internal_t not_a_number = {0, 0, 1, 0, 0};
     return not_a_number;
   }
-
-  if (a.mantissa == 0 || b.mantissa == 0) {
-    return a.mantissa == 0 ? b : a;
-  }
   
   if (a.is_inf || b.is_inf) {
     return a.is_inf ? a : b;
+  }
+
+  if (a.mantissa == 0 || b.mantissa == 0) {
+    return a.mantissa == 0 ? b : a;
   }
 
   shift_left_to_mantissa_position(&a);

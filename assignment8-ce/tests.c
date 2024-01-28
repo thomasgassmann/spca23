@@ -65,6 +65,7 @@ int32_t get_random() {
 }
 
 void public_tests() {
+  assert(test_fp_add(float_from_int(0x439e3458), float_from_int(0xff800000)));
   assert(test_fp_add(float_from_int(0x8c0fdee5), float_from_int(0x17800001)));
   assert(test_fp_add(float_from_int(0x80554850), float_from_int(0xd33302)));
   assert(test_fp_add(float_from_int(0x1ed4d75), float_from_int(0x81cdc365)));
@@ -110,10 +111,10 @@ void public_tests() {
   assert(test_fp_mul(-4.2e-13, 4.2e13));
   assert(test_fp_mul(-4.2e-1, 4.2e13));
 
+  uint64_t i = 0;
   while (1) {
     int32_t value_a = get_random();
     int32_t value_b = get_random();
-    printf("0x%x - 0x%x in progress\n", value_a, value_b);
     float a = float_from_int(value_a);
     float b = float_from_int(value_b);
     if (!test_fp_add(a, b)) {
@@ -125,6 +126,12 @@ void public_tests() {
       printf("0x%x - 0x%x mul failed\n", value_a, value_b);
       break;
     }
+
+    if ((i & 0xFFFF) == 0) {
+      printf("%" PRId64 "\r", i);
+    }
+
+    i++;
   }
 }
 
