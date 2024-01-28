@@ -124,18 +124,6 @@ float_t fp_negate(float_t a) {
   return a;
 }
 
-void shift_left_mantissa(internal_t *value, int amount) {
-  // no rounding here, i think
-  if (value->exponent - amount < 1 - B) {
-    // this number is going to be denormalized
-    // TODO: we might need to do something here
-    return;
-  }
-
-  value->mantissa <<= amount;
-  value->exponent -= amount;
-}
-
 void shift_right_mantissa(internal_t *value, int amount) {
   value->exponent += amount;
   if (amount >= 64) {
@@ -166,7 +154,23 @@ void shift_right_mantissa(internal_t *value, int amount) {
 // gets the best denormalized representation
 // returns zero if not possible
 float_t try_denormalize(internal_t *value) {
-  assert(value->exponent + FRAC_BITS < 1 - B);
+  if (value->exponent > 1 - B - FRAC_BITS) {
+    // here we need to shift left instead, because
+    // we creating a normalized number would result
+    // in an exponent lower than the lowest exponent
+    uint32_t shift_amount = 0;
+    int32_t exp = value->exponent;
+    while (exp > 1 - B - FRAC_BITS) {
+      shift_amount++;
+      exp--;
+    }
+
+    float_t res;
+    res.exponent = value->exponent - shift_amount + FRAC_BITS + B - 1;
+    res.mantissa = value->mantissa << shift_amount;
+    res.sign = value->sign;
+    return res;
+  }
 
   uint32_t shift_amount = 0;
   int32_t exp = value->exponent;
@@ -245,7 +249,14 @@ float_t to_ieee754(internal_t value) {
       rest = mantissa >> FRAC_BITS;
     }
 
-    shift_left_mantissa(&value, amount);
+    if (value.exponent - amount < 1 - B - FRAC_BITS) {
+      // this number is going to be denormalized
+      // TODO: we might need to do something here
+      return try_denormalize(&value);
+    }
+
+    value.mantissa <<= amount;
+    value.exponent -= amount;
     if ((value.mantissa >> FRAC_BITS) == 0) {
       // number is denormalized
       res.exponent = value.exponent + B - 1 + FRAC_BITS;

@@ -32,6 +32,7 @@ int test_fp_add(float f1, float f2) {
   float m_ans = fp_decode(ans);
 
   float c_ans = f1 + f2;
+
   if (isNaN(m_ans) && isNaN(c_ans)) {
     return 1;
   }
@@ -64,6 +65,8 @@ int32_t get_random() {
 }
 
 void public_tests() {
+  assert(test_fp_add(float_from_int(0x1ed4d75), float_from_int(0x81cdc365)));
+  assert(test_fp_add(float_from_int(0x872bdb90), float_from_int(0x77e968e)));
   assert(test_fp_mul(float_from_int(0xb80a2643), float_from_int(0x8791f355)));
   assert(test_fp_add(float_from_int(0xfe035312), float_from_int(0x6a0c9f05)));
   assert(test_fp_add(float_from_int(0xd0462697), float_from_int(0xdc55fbd8)));
