@@ -32,8 +32,67 @@ cache_t *init_cache(uint32_t set_bits, uint32_t block_bits, uint32_t associativi
     return cache;
 }
 
-void access_cache(cache_t *cache, access_t *access, uint64_t address) {
+uint32_t get_set_index(cache_t *cache, uint64_t address) {
+    address >>= cache->block_bits;
+    uint32_t mask = (1 << cache->set_bits) - 1;
+    return address & mask;
+}
 
+uint64_t get_tag(cache_t *cache, uint64_t address) {
+    return address >> (cache->block_bits + cache->set_bits);
+}
+
+void update_lru(cache_t *cache, set_t *set, uint32_t index) {
+    for (uint32_t i = 0; i < cache->associativity; i++) {
+        if (set->lru[i] == index) {
+            // we now need to move i to the end
+            // i.e. we first move all elements from [i + 1, associativity) to
+            // [i, associativity - 1), then place index at lru[associativity]
+            for (uint32_t j = i; j < cache->associativity - 1; j++) {
+                set->lru[j] = set->lru[j + 1];
+            }
+            
+            set->lru[cache->associativity] = index;
+            return;
+        }
+    }
+
+    printf("failure, expected %i to be in LRU array\n", index);
+    exit(EXIT_FAILURE);
+}
+
+void access_cache(cache_t *cache, access_t *access, uint64_t address) {
+    uint32_t index = get_set_index(cache, address);
+    uint64_t tag = get_tag(cache, address);
+    set_t *set = &cache->sets[index];
+    for (uint32_t i = 0; i < cache->associativity; i++) {
+        if (set->blocks[i] == tag && set->valid[i]) {
+            // block is in cache, we hit
+            access->hit_count++;
+            update_lru(cache, set, i);
+            return;
+        }
+    }
+
+    // block is NOT in cache
+    
+    // first look for a free index, we miss in any case now
+    access->miss_count++;
+    for (uint32_t i = 0; i < cache->associativity; i++) {
+        if (!set->valid[i]) {
+            set->valid[i] = true;
+            set->blocks[i] = tag;
+            update_lru(cache, set, i);
+            return;
+        }
+    }
+
+    // there are no free blocks, evict one, now we also evict in any case
+    access->eviction_count++;
+    // we should replace the item at index lru[0]
+    uint32_t eviction_index = set->lru[0];
+    set->blocks[eviction_index] = tag;
+    update_lru(cache, set, eviction_index);
 }
 
 int main(int argc, char *argv[]) {
@@ -106,6 +165,7 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
 
+        printf("%s\n", line);
         switch (command) {
             case 'I':
                 break;
@@ -126,8 +186,6 @@ int main(int argc, char *argv[]) {
                 printf("Invalid command %c\n", command);
                 exit(EXIT_FAILURE);
         }
-
-        access_cache(cache, &accesses, 0);
     }
 
     fclose(fp);

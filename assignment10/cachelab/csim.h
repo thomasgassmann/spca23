@@ -24,5 +24,8 @@ typedef struct {
 
 cache_t *init_cache(uint32_t set_bits, uint32_t block_bits, uint32_t associativity);
 void access_cache(cache_t *cache, access_t *access, uint64_t address);
+uint32_t get_set_index(cache_t *cache, uint64_t address);
+uint64_t get_tag(cache_t *cache, uint64_t address);
+void update_lru(cache_t *cache, set_t *set, uint32_t index);
 
 #endif
