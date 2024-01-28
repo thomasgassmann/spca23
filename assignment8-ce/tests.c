@@ -4,11 +4,12 @@
 #include <stdlib.h>
 #include "lib.h"
 
-float float_from_int(int32_t value) {
+float float_from_int(uint32_t value) {
   union {
     float f;
     uint32_t i;
-  } c = {value};
+  } c = {0};
+  c.i = value;
   return c.f;
 }
 
@@ -63,6 +64,10 @@ int32_t get_random() {
 }
 
 void public_tests() {
+  assert(test_fp_mul(float_from_int(0x83bc62af), float_from_int(0x3a2f69b4)));
+  assert(test_fp_add(-1, 1));
+  assert(test_fp_add(float_from_int(0x50e3cd33), float_from_int(0x5c154748)));
+  assert(test_fp_add(float_from_int(0xd0cb0bca), float_from_int(0xbd644748)));
   assert(test_fp_add(float_from_int(0xabbacd29), float_from_int(0x46e3fbf2)));
   assert(test_fp_mul(0, 0.0));
   assert(test_fp_add(0, 0.0));
@@ -72,7 +77,6 @@ void public_tests() {
   assert(test_fp_mul(0, -1.0 / 0.0));
   assert(test_fp_add(0, 0.0 / 0.0));
   assert(test_fp_mul(0, 0.0 / 0.0));
-  assert(test_fp_add(-1, 1));
   assert(test_fp_mul(1.17549435e-038, 0.000000000001));
   assert(test_fp_mul(3.402823E+38, 3.402823E+38));
 
@@ -98,6 +102,7 @@ void public_tests() {
   while (1) {
     int32_t value_a = get_random();
     int32_t value_b = get_random();
+    printf("0x%x - 0x%x in progress\n", value_a, value_b);
     float a = float_from_int(value_a);
     float b = float_from_int(value_b);
     if (!test_fp_add(a, b)) {

@@ -23,6 +23,7 @@ typedef struct internal_t {
 #define LARGEST_NORMALIZED_EXPONENT 0xFE
 #define MAX_EXP 0xFF
 #define IS_MAX_EXP(exp) (exp == MAX_EXP)
+#define MANTISSA_MASK ((1 << FRAC_BITS) - 1)
 
 bool is_zero(float_t f) {
   return f.mantissa == 0 && f.exponent == 0;
@@ -136,12 +137,6 @@ void shift_left_mantissa(internal_t *value, int amount) {
 }
 
 void shift_right_mantissa(internal_t *value, int amount) {
-  // check overflow
-  if (MAX_EXP <= value->exponent + amount) {
-    value->is_inf = 1;
-    return;
-  }
-
   value->exponent += amount;
 
   uint64_t current_mantissa = value->mantissa;
@@ -161,6 +156,32 @@ void shift_right_mantissa(internal_t *value, int amount) {
     // we can just shift things out
     value->mantissa >>= amount;
   }
+}
+
+// gets the best denormalized representation
+// returns zero if not possible
+float_t try_denormalize(internal_t *value) {
+  assert(value->exponent + FRAC_BITS < 1 - B);
+
+  uint32_t shift_amount = 0;
+  int32_t exp = value->exponent;
+  while (exp + FRAC_BITS < 1 - B) {
+    shift_amount++;
+    exp++;
+  }
+
+  shift_right_mantissa(value, shift_amount);
+  if (value->mantissa == 0) {
+    float_t zero = get_0();
+    zero.sign = value->sign;
+    return zero;
+  }
+
+  float_t res;
+  res.exponent = value->exponent + FRAC_BITS + B - 1;
+  res.mantissa = value->mantissa;
+  res.sign = value->sign;
+  return res;
 }
 
 float_t to_ieee754(internal_t value) {
@@ -183,8 +204,7 @@ float_t to_ieee754(internal_t value) {
 
   float_t res = {value.sign, 0, 0};
   uint64_t rest = value.mantissa >> FRAC_BITS;
-  uint64_t mantissa_mask = ((1 << FRAC_BITS) - 1);
-  uint64_t mantissa_cutoff = value.mantissa & mantissa_mask;
+  uint64_t mantissa_cutoff = value.mantissa & MANTISSA_MASK;
   if (rest > 1) {
     // shift right
     int amount = 0;
@@ -193,17 +213,24 @@ float_t to_ieee754(internal_t value) {
       rest >>= 1;
     }
 
-    shift_right_mantissa(&value, amount);
-    if (value.exponent + B + FRAC_BITS < 0) {
-      return zero;
+    if (MAX_EXP <= value.exponent + amount) {
+      value.is_inf = 1;
+      return;
     }
 
+    if (value.exponent + B + FRAC_BITS + amount < 0) {
+      float_t close_zero = try_denormalize(&value);
+
+      return close_zero;
+    }
+
+    shift_right_mantissa(&value, amount);
     if (value.exponent + B + FRAC_BITS > LARGEST_NORMALIZED_EXPONENT) {
       return inf;
     }
 
     res.exponent = value.exponent + B + FRAC_BITS;
-    res.mantissa = value.mantissa & mantissa_mask;
+    res.mantissa = value.mantissa & MANTISSA_MASK;
   } else if (rest == 0) {
     // shift upwards, number might get denormalized
     int amount = 0;
@@ -218,11 +245,11 @@ float_t to_ieee754(internal_t value) {
     if ((value.mantissa >> FRAC_BITS) == 0) {
       // number is denormalized
       res.exponent = value.exponent + B - 1 + FRAC_BITS;
-      res.mantissa = value.mantissa & mantissa_mask;
+      res.mantissa = value.mantissa & MANTISSA_MASK;
     } else {
       // number is normalized
       res.exponent = value.exponent + B + FRAC_BITS;
-      res.mantissa = value.mantissa & mantissa_mask;
+      res.mantissa = value.mantissa & MANTISSA_MASK;
     }
   } else {
     // we already have a leading 1
@@ -273,6 +300,13 @@ uint64_t leading_bit(uint64_t value) {
   return 0;
 }
 
+void shift_left_to_mantissa_position(internal_t *value) {
+  while ((value->mantissa & (1 << FRAC_BITS)) == 0) {
+    value->mantissa <<= 1;
+    value->exponent--;
+  }
+}
+
 internal_t add(internal_t a, internal_t b) {
   if (a.mantissa == 0 || b.mantissa == 0) {
     return a.mantissa == 0 ? b : a;
@@ -287,6 +321,8 @@ internal_t add(internal_t a, internal_t b) {
     return a.is_inf ? a : b;
   }
 
+  shift_left_to_mantissa_position(&a);
+  shift_left_to_mantissa_position(&b);
   if (b.exponent > a.exponent) {
     internal_t tmp = a;
     a = b;
@@ -313,7 +349,7 @@ internal_t add(internal_t a, internal_t b) {
     }
   }
 
-  if (diff < FRAC_BITS) {
+  if (diff <= FRAC_BITS) {
     // the mantiassas overlap (potentially) at least in some bits
     // we can safely shift a.mantissa to the left because we assume
     // the numbers to be "normalized" as described above
@@ -327,6 +363,7 @@ internal_t add(internal_t a, internal_t b) {
     // number. to do this, we emulate the rounding be appending two
     // bits to a. these two bits will behave the same as the GRS bits
 
+    // TODO: i think the following is broken?
     result.exponent = a.exponent - 2;
     result.mantissa = a.mantissa << 2;
 
