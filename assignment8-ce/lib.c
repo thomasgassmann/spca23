@@ -147,7 +147,7 @@ void shift_right_mantissa(internal_t *value, int amount) {
   uint64_t sticky_bits = current_mantissa & sticky_mask;
   uint64_t sticky_bit = !!sticky_bits;
   if (guard_bit && round_bit && !sticky_bit) {
-    // round to even, TODO: does this work?
+    // round to even
     value->mantissa >>= amount;
     value->mantissa++; // this might overflow again, need to postnormalize 
     postnormalize(value);
