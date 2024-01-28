@@ -262,7 +262,6 @@ float_t to_ieee754(internal_t value) {
 
     if (value.exponent - amount < 1 - B - FRAC_BITS) {
       // this number is going to be denormalized
-      // TODO: we might need to do something here
       return try_denormalize(&value);
     }
 
@@ -354,7 +353,6 @@ internal_t add(internal_t a, internal_t b) {
   // using b.exponent as the new exponent is a bad idea because we might need
   // to shift things outside
 
-  // TODO: they might have different sign
   // a.exponent >= b.exponent
   int diff = a.exponent - b.exponent;
   
@@ -385,39 +383,6 @@ internal_t add(internal_t a, internal_t b) {
       result.sign = first < shifted;
     }
   }
-  // if (diff <= 64 - FRAC_BITS - 1) {
-  //   // the mantiassas overlap (potentially) at least in some bits
-  //   // we can safely shift a.mantissa to the left because we assume
-  //   // the numbers to be "normalized" as described above
-  //   int64_t shifted = b.mantissa;
-  //   int64_t first = a.mantissa << diff;
-    
-  //   result.mantissa = first + shifted;
-  // } else {
-  //   // in this case, there is no overlap between the bits of the
-  //   // mantissas. we thus only need to care about how to round the
-  //   // number. to do this, we emulate the rounding be appending two
-  //   // bits to a. these two bits will behave the same as the GRS bits
-
-  //   // TODO: i think the following is broken?
-  //   result.exponent = a.exponent;
-  //   result.mantissa = a.mantissa;
-
-  //   // // the two right most bits are 0 now, we set them according to the rounding
-  //   // // behavior of b
-  //   // if (diff == FRAC_BITS) {
-  //   //   // rounding can only occur if we shift exaclty by FRAC_BITS
-  //   //   // otherwise we always round down, which is equivalent to leaving
-  //   //   // the last two bits zero
-  //   //   int64_t round_bit = b.mantissa >> FRAC_BITS;
-  //   //   result.mantissa |= (round_bit << 1);
-
-  //   //   // the lower 23 bits
-  //   //   int64_t sticky_bits = b.mantissa & 0x7FFFFF;
-  //   //   int64_t sticky_bit = !!sticky_bits;
-  //   //   result.mantissa |= sticky_bit;
-  //   // }
-  // }
   
   return result;
 }
