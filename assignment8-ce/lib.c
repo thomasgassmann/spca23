@@ -125,6 +125,7 @@ float_t fp_negate(float_t a) {
 }
 
 void shift_right_mantissa(internal_t *value, int amount);
+float_t to_ieee754(internal_t value);
 
 void postnormalize(internal_t *value) {
   if ((value->mantissa & MANTISSA_MASK) == 0) {
@@ -199,7 +200,14 @@ float_t try_denormalize(internal_t *value) {
 
   float_t res;
   res.exponent = value->exponent + FRAC_BITS + B - 1;
-  res.mantissa = value->mantissa;
+  if (res.exponent != 0) {
+    // the number was postnormalized and is now normalized again
+    // due to an overflow, it should have a leading 1
+    return to_ieee754(*value);
+  } else {
+    res.mantissa = value->mantissa;
+  }
+
   res.sign = value->sign;
   return res;
 }

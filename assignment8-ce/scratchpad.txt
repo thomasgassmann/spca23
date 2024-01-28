@@ -1,2 +1,1 @@
-actual:     316.408936
-expected:   -inf
+0x26bf0a - 0xc0536d4b mul failed
