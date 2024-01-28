@@ -65,6 +65,7 @@ int32_t get_random() {
 }
 
 void public_tests() {
+  assert(test_fp_add(float_from_int(0x8c0fdee5), float_from_int(0x17800001)));
   assert(test_fp_add(float_from_int(0x80554850), float_from_int(0xd33302)));
   assert(test_fp_add(float_from_int(0x1ed4d75), float_from_int(0x81cdc365)));
   assert(test_fp_add(float_from_int(0x872bdb90), float_from_int(0x77e968e)));

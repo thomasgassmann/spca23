@@ -124,6 +124,15 @@ float_t fp_negate(float_t a) {
   return a;
 }
 
+void shift_right_mantissa(internal_t *value, int amount);
+
+void postnormalize(internal_t *value) {
+  if ((value->mantissa & MANTISSA_MASK) == 0) {
+    // we have an overflow
+    shift_right_mantissa(value, 1);
+  }
+}
+
 void shift_right_mantissa(internal_t *value, int amount) {
   value->exponent += amount;
   if (amount >= 64) {
@@ -138,13 +147,15 @@ void shift_right_mantissa(internal_t *value, int amount) {
   uint64_t sticky_bits = current_mantissa & sticky_mask;
   uint64_t sticky_bit = !!sticky_bits;
   if (guard_bit && round_bit && !sticky_bit) {
-    // round to even
+    // round to even, TODO: does this work?
     value->mantissa >>= amount;
-    value->mantissa++; // TODO: this might overflow again, need to postnormalize 
+    value->mantissa++; // this might overflow again, need to postnormalize 
+    postnormalize(value);
   } else if (round_bit && sticky_bit) {
     // round up
     value->mantissa >>= amount;
-    value->mantissa++; // TODO: this might overflow again, need to postnormalize 
+    value->mantissa++; // this might overflow again, need to postnormalize
+    postnormalize(value);
   } else {
     // we can just shift things out
     value->mantissa >>= amount;
