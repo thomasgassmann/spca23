@@ -24,7 +24,11 @@
         "string": "c",
         "unordered_map": "c",
         "unordered_set": "c",
-        "vector": "c"
+        "vector": "c",
+        "cachelab.h": "c",
+        "*.tcc": "c",
+        "istream": "c",
+        "streambuf": "c"
     },
     "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 4, ColumnLimit: 0}"
 }
