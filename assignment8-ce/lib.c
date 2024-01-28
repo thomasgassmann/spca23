@@ -267,6 +267,12 @@ float_t to_ieee754(internal_t value) {
       res.mantissa = value.mantissa & MANTISSA_MASK;
     }
   } else {
+    // check if exp is too small
+    if (value.exponent < 1 - B - FRAC_BITS) {
+      // this number is going to be denormalized
+      return try_denormalize(&value);
+    }
+
     // we already have a leading 1
     res.exponent = value.exponent + B + FRAC_BITS;
     res.mantissa = mantissa_cutoff;
