@@ -138,6 +138,10 @@ void shift_left_mantissa(internal_t *value, int amount) {
 
 void shift_right_mantissa(internal_t *value, int amount) {
   value->exponent += amount;
+  if (amount >= 64) {
+    value->mantissa = 0;
+    return;
+  }
 
   uint64_t current_mantissa = value->mantissa;
   uint64_t guard_bit = (current_mantissa >> amount) & 1;  
@@ -147,7 +151,8 @@ void shift_right_mantissa(internal_t *value, int amount) {
   uint64_t sticky_bit = !!sticky_bits;
   if (guard_bit && round_bit && !sticky_bit) {
     // round to even
-
+    value->mantissa >>= amount;
+    value->mantissa++; // TODO: this might overflow again, need to postnormalize 
   } else if (round_bit && sticky_bit) {
     // round up
     value->mantissa >>= amount;
@@ -165,7 +170,7 @@ float_t try_denormalize(internal_t *value) {
 
   uint32_t shift_amount = 0;
   int32_t exp = value->exponent;
-  while (exp + FRAC_BITS < 1 - B) {
+  while (exp < 1 - B - FRAC_BITS) {
     shift_amount++;
     exp++;
   }
@@ -214,8 +219,7 @@ float_t to_ieee754(internal_t value) {
     }
 
     if (MAX_EXP <= value.exponent + amount) {
-      value.is_inf = 1;
-      return;
+      return inf;
     }
 
     if (value.exponent + B + FRAC_BITS + amount < 0) {
@@ -284,20 +288,6 @@ internal_t from_ieee754(float_t value) {
   }
   
   return res;
-}
-
-uint64_t leading_bit(uint64_t value) {
-  uint64_t i = 63;
-  while (value > 0) {
-    if (value & (uint64_t)0x8000000000000000) {
-      return i;
-    }
-
-    i--;
-    value <<= 1;
-  }
-
-  return 0;
 }
 
 void shift_left_to_mantissa_position(internal_t *value) {
