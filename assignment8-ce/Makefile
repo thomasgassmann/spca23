@@ -6,7 +6,7 @@ DEBUG ?= 0
 ifeq ($(DEBUG), 1)
     CFLAGS+= -g -D DEBUG
 else
-	CFLAGS+= -O2
+	CFLAGS+= -O3
 endif
 
 OBJS = lib.o tests.o

@@ -123,6 +123,18 @@ float_t fp_negate(float_t a) {
   return a;
 }
 
+void shift_left_mantissa(internal_t *value, int amount) {
+  // no rounding here, i think
+  if (value->exponent - amount < 1 - B) {
+    // this number is going to be denormalized
+    // TODO: we might need to do something here
+    return;
+  }
+
+  value->mantissa <<= amount;
+  value->exponent -= amount;
+}
+
 void shift_right_mantissa(internal_t *value, int amount) {
   // check overflow
   if (MAX_EXP <= value->exponent + amount) {
@@ -149,8 +161,6 @@ void shift_right_mantissa(internal_t *value, int amount) {
     // we can just shift things out
     value->mantissa >>= amount;
   }
-
-
 }
 
 float_t to_ieee754(internal_t value) {
@@ -176,6 +186,7 @@ float_t to_ieee754(internal_t value) {
   uint64_t mantissa_mask = ((1 << FRAC_BITS) - 1);
   uint64_t mantissa_cutoff = value.mantissa & mantissa_mask;
   if (rest > 1) {
+    // shift right
     int amount = 0;
     while (rest > 1) {
       amount++;
@@ -195,8 +206,24 @@ float_t to_ieee754(internal_t value) {
     res.mantissa = value.mantissa & mantissa_mask;
   } else if (rest == 0) {
     // shift upwards, number might get denormalized
-    res.exponent = value.exponent + B - 1 + FRAC_BITS;
-    res.mantissa = mantissa_cutoff;
+    int amount = 0;
+    uint64_t mantissa = value.mantissa;
+    while (rest == 0) {
+      amount++;
+      mantissa <<= 1;
+      rest = mantissa >> FRAC_BITS;
+    }
+
+    shift_left_mantissa(&value, amount);
+    if ((value.mantissa >> FRAC_BITS) == 0) {
+      // number is denormalized
+      res.exponent = value.exponent + B - 1 + FRAC_BITS;
+      res.mantissa = value.mantissa & mantissa_mask;
+    } else {
+      // number is normalized
+      res.exponent = value.exponent + B + FRAC_BITS;
+      res.mantissa = value.mantissa & mantissa_mask;
+    }
   } else {
     // we already have a leading 1
     res.exponent = value.exponent + B + FRAC_BITS;
@@ -321,6 +348,9 @@ internal_t add(internal_t a, internal_t b) {
 
   if (a.sign != b.sign) {
     result.sign = (result.mantissa >> 63) & 1;
+    if (result.sign == 1) {
+      result.mantissa = ~result.mantissa + 1;
+    }
   }
   
   return result;
@@ -347,6 +377,11 @@ float_t fp_add(float_t a, float_t b) {
 internal_t mult(internal_t a, internal_t b) {
   if (a.is_nan || b.is_nan) {
     return a.is_nan ? a : b;
+  }
+
+  if ((a.is_inf && b.mantissa == 0) ||(b.is_inf && a.mantissa == 0)) {
+    a.is_nan = 1;
+    return a;
   }
   
   if (a.is_inf || b.is_inf) {

@@ -1,7 +1,27 @@
 #include <stdio.h>
 #include <assert.h>
 #include <inttypes.h>
+#include <stdlib.h>
 #include "lib.h"
+
+float float_from_int(int32_t value) {
+  union {
+    float f;
+    uint32_t i;
+  } c = {value};
+  return c.f;
+}
+
+int isNaN(float value) {
+  union {
+    float f;
+    uint32_t i;
+  } c = {value};
+
+  int32_t rest = c.i >> 23;
+  int32_t lower = c.i & 0x7FFFFF;
+  return lower != 0 && (rest == 0xFF || rest == 0x1FF);
+}
 
 int test_fp_add(float f1, float f2) {
   float_t v1 = fp_encode(f1);
@@ -11,6 +31,9 @@ int test_fp_add(float f1, float f2) {
   float m_ans = fp_decode(ans);
 
   float c_ans = f1 + f2;
+  if (isNaN(m_ans) && isNaN(c_ans)) {
+    return 1;
+  }
 
   return c_ans == m_ans;
 }
@@ -23,67 +46,67 @@ int test_fp_mul(float f1, float f2) {
   float m_ans = fp_decode(ans);
 
   float c_ans = f1 * f2;
+  if (isNaN(m_ans) && isNaN(c_ans)) {
+    return 1;
+  }
 
   return c_ans == m_ans;
 }
 
+int32_t get_random() {
+  int x = rand() & 0xff;
+  x |= (rand() & 0xff) << 8;
+  x |= (rand() & 0xff) << 16;
+  x |= (rand() & 0xff) << 24;
+
+  return x;
+}
+
 void public_tests() {
-  test_fp_add(-1, 1);
-  test_fp_mul(1.17549435e-038, 0.000000000001);
-  test_fp_mul(3.402823E+38, 3.402823E+38);
+  assert(test_fp_add(float_from_int(0xabbacd29), float_from_int(0x46e3fbf2)));
+  assert(test_fp_mul(0, 0.0));
+  assert(test_fp_add(0, 0.0));
+  assert(test_fp_mul(0, 1.0 / 0.0));
+  assert(test_fp_add(0, 1.0 / 0.0));
+  assert(test_fp_add(0, -1.0 / 0.0));
+  assert(test_fp_mul(0, -1.0 / 0.0));
+  assert(test_fp_add(0, 0.0 / 0.0));
+  assert(test_fp_mul(0, 0.0 / 0.0));
+  assert(test_fp_add(-1, 1));
+  assert(test_fp_mul(1.17549435e-038, 0.000000000001));
+  assert(test_fp_mul(3.402823E+38, 3.402823E+38));
 
-  test_fp_add(4.2e-12, 4.2e12);
-  test_fp_add(1, 1);
-  test_fp_add(323.2, 4.2e12);
-  test_fp_add(4.2, 4.3);
-  test_fp_add(0.0, 0.0);
-  test_fp_add(0, 1);
-  test_fp_add(0, -1);
-  test_fp_add(-1, -1);
+  assert(test_fp_add(4.2e-12, 4.2e12));
+  assert(test_fp_add(1, 1));
+  assert(test_fp_add(323.2, 4.2e12));
+  assert(test_fp_add(4.2, 4.3));
+  assert(test_fp_add(0.0, 0.0));
+  assert(test_fp_add(0, 1));
+  assert(test_fp_add(0, -1));
+  assert(test_fp_add(-1, -1));
 
-  test_fp_mul(0.0000001, 0.000000000001);
-  test_fp_mul(1, 1);
-  test_fp_mul(1, 0);
-  test_fp_mul(0, 1);
-  test_fp_mul(-1, 1);
-  test_fp_mul(-1, 50);
-  test_fp_mul(-1, 4.2e13);
-  test_fp_mul(-4.2e-13, 4.2e13);
-  test_fp_mul(-4.2e-1, 4.2e13);
+  assert(test_fp_mul(0.0000001, 0.000000000001));
+  assert(test_fp_mul(1, 1));
+  assert(test_fp_mul(1, 0));
+  assert(test_fp_mul(0, 1));
+  assert(test_fp_mul(-1, 1));
+  assert(test_fp_mul(-1, 50));
+  assert(test_fp_mul(-1, 4.2e13));
+  assert(test_fp_mul(-4.2e-13, 4.2e13));
+  assert(test_fp_mul(-4.2e-1, 4.2e13));
 
-  union {
-    float f;
-    uint32_t i;
-  } value_a = {0};
-  union {
-    float f;
-    uint32_t i;
-  } value_b = {0};
-  uint64_t oks = 0;
-  for (uint32_t v = 0; 1; v++) {
-    for (uint32_t h = 0; 1; h++) {
-      value_a.i = v;
-      value_b.i = h;
-
-      int current = 0;
-      current += test_fp_add(value_a.f, value_b.f);
-      current += test_fp_mul(value_a.f, value_b.f);
-      if (current != 2) {
-        printf("%f - %f failed\n", value_a.f, value_b.f);
-      }
-
-      oks += current;
-
-      if ((oks & 0xFFFFF) == 0) {
-        printf("%" PRId64 "\r", oks);
-      }
-
-      if (h == 0xFFFFFFFF) {
-        break;
-      }
+  while (1) {
+    int32_t value_a = get_random();
+    int32_t value_b = get_random();
+    float a = float_from_int(value_a);
+    float b = float_from_int(value_b);
+    if (!test_fp_add(a, b)) {
+      printf("0x%x - 0x%x add failed\n", value_a, value_b);
+      break;
     }
 
-    if (v == 0xFFFFFFFF) {
+    if (!test_fp_mul(a, b)) {
+      printf("0x%x - 0x%x mul failed\n", value_a, value_b);
       break;
     }
   }
