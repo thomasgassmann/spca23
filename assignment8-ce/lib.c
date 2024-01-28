@@ -159,10 +159,16 @@ float_t to_ieee754(internal_t value) {
     return get_NaN();
   }
   
+  float_t inf = get_Inf();
+  inf.sign = value.sign;
   if (value.is_inf) {
-    float_t inf = get_Inf();
-    inf.sign = value.sign;
     return inf;
+  }
+
+  float_t zero = get_0();
+  zero.sign = value.sign;
+  if (value.mantissa == 0) {
+    return zero;
   }
 
   float_t res = {value.sign, 0, 0};
@@ -177,6 +183,14 @@ float_t to_ieee754(internal_t value) {
     }
 
     shift_right_mantissa(&value, amount);
+    if (value.exponent + B + FRAC_BITS < 0) {
+      return zero;
+    }
+
+    if (value.exponent + B + FRAC_BITS > LARGEST_NORMALIZED_EXPONENT) {
+      return inf;
+    }
+
     res.exponent = value.exponent + B + FRAC_BITS;
     res.mantissa = value.mantissa & mantissa_mask;
   } else if (rest == 0) {
@@ -218,40 +232,18 @@ internal_t from_ieee754(float_t value) {
   return res;
 }
 
-void shift_right_as_much_as_possible(internal_t *value, int max) {
-  uint64_t c = value->mantissa & (uint64_t)1;
-  int it = 0;
-  while (c == 0) {
-    // as long as the lowest bit is not set, we can safely shift out things and decrease the exponent
-    value->exponent++;
-    value->mantissa >>= 1;
-
-    c = value->mantissa & 1;
-
-    it++;
-    if (it >= max) {
-      return;
+uint64_t leading_bit(uint64_t value) {
+  uint64_t i = 63;
+  while (value > 0) {
+    if (value & (uint64_t)0x8000000000000000) {
+      return i;
     }
+
+    i--;
+    value <<= 1;
   }
-}
 
-void shift_left_as_much_as_possible(internal_t *value, int max) {
-  uint64_t mask = (uint64_t)1 << 62; // the highest bit should always be 0
-  // if the highest bit was not zero for both values an addition might overflow
-  uint64_t c = value->mantissa & mask;
-  int it = 0;
-  while (c == 0) {
-    // as long as the highest bit is not set, we can safely shift out things and increase the exponent
-    value->exponent--;
-    value->mantissa <<= 1;
-
-    c = value->mantissa & mask;
-
-    it++;
-    if (it >= max) {
-      return;
-    }
-  }
+  return 0;
 }
 
 internal_t add(internal_t a, internal_t b) {
@@ -284,19 +276,52 @@ internal_t add(internal_t a, internal_t b) {
   // TODO: they might have different sign
   // a.exponent >= b.exponent
   int diff = a.exponent - b.exponent;
-  // make exponent of b larger (not more than diff)
-  shift_right_as_much_as_possible(&b, diff);
-  diff = a.exponent - b.exponent;
-  // make exponent of a smaller
-  shift_left_as_much_as_possible(&a, diff);
-  diff = a.exponent - b.exponent;
   
-  internal_t result = {0, 0, 0, b.exponent, 0};
-  
-  int64_t shifted = b.mantissa;
-  int64_t first = a.mantissa << diff;
-  
-  result.mantissa = first + shifted;
+  internal_t result = {a.sign, 0, 0, b.exponent, 0};
+  if (a.sign != b.sign) {
+    if (a.sign == 1) {
+      a.mantissa = ~a.mantissa + 1; 
+    } else {
+      b.mantissa = ~b.mantissa + 1;
+    }
+  }
+
+  if (diff < FRAC_BITS) {
+    // the mantiassas overlap (potentially) at least in some bits
+    // we can safely shift a.mantissa to the left because we assume
+    // the numbers to be "normalized" as described above
+    int64_t shifted = b.mantissa;
+    int64_t first = a.mantissa << diff;
+    
+    result.mantissa = first + shifted;
+  } else {
+    // in this case, there is no overlap between the bits of the
+    // mantissas. we thus only need to care about how to round the
+    // number. to do this, we emulate the rounding be appending two
+    // bits to a. these two bits will behave the same as the GRS bits
+
+    result.exponent = a.exponent - 2;
+    result.mantissa = a.mantissa << 2;
+
+    // the two right most bits are 0 now, we set them according to the rounding
+    // behavior of b
+    if (diff == FRAC_BITS) {
+      // rounding can only occur if we shift exaclty by FRAC_BITS
+      // otherwise we always round down, which is equivalent to leaving
+      // the last two bits zero
+      int64_t round_bit = b.mantissa >> FRAC_BITS;
+      result.mantissa |= (round_bit << 1);
+
+      // the lower 23 bits
+      int64_t sticky_bits = b.mantissa & 0x7FFFFF;
+      int64_t sticky_bit = !!sticky_bits;
+      result.mantissa |= sticky_bit;
+    }
+  }
+
+  if (a.sign != b.sign) {
+    result.sign = (result.mantissa >> 63) & 1;
+  }
   
   return result;
 }
