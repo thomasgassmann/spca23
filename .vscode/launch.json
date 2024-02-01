@@ -102,6 +102,20 @@
             "externalConsole": false,
             "MIMode": "gdb",
             "preLaunchTask": "cache-lab"
+        },
+        {
+            "name": "driver lab",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/assignment12/ddriver",
+            "args": [
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/assignment12",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "driver-lab"
         }
     ]
 }

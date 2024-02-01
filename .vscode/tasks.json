@@ -51,6 +51,19 @@
                 "isDefault": true
             },
             "problemMatcher": "$gcc"
+        },
+        {
+            "label": "driver-lab",
+            "type": "shell",
+            "command": "make clean && make DEBUG=1",
+            "options": {
+                "cwd": "${workspaceFolder}/assignment12"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
         }
     ],
     "version": "2.0.0"
