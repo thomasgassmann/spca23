@@ -35,10 +35,20 @@ void out(mpfc_desc *desc) {
     printf(ANSI_COLOR_GREEN "%s\n" ANSI_COLOR_RESET, desc->buffer);
 }
 
+// #define DEBUG 1
+#ifdef DEBUG
 #define logf(message, ...) printf(ANSI_COLOR_RED message "\n" ANSI_COLOR_RESET, __VA_ARGS__)
 #define logcf(message, ...) printf(ANSI_COLOR_RED message ANSI_COLOR_RESET, __VA_ARGS__)
 #define logc(message) printf(ANSI_COLOR_RED message ANSI_COLOR_RESET)
 #define log(message) printf(ANSI_COLOR_RED message "\n" ANSI_COLOR_RESET)
+#else
+#define logf(message, ...) /* */
+#define logcf(message, ...) /* */
+#define logc(message) /* */
+#define log(message) /* */
+#endif
+
+
 #define next_index() ((CURRENT_OS_INDEX + 1) % mpfc_read_size())
 
 void log_ownership() {
@@ -102,6 +112,8 @@ void irq() {
     if (status & STATUS_FLAG_OVERRUN_INTERRUPT_PENDING) {
         os_wakeup();
     }
+
+    mpfc_write_status(1);
 }
 
 void init_descriptor_ring() {
@@ -162,12 +174,10 @@ int main(int argc, char *argv[]) {
                 descriptors[CURRENT_OS_INDEX].buffer = realloc(
                     descriptors[CURRENT_OS_INDEX].buffer,
                     new_size);
-                mpfc_write_status(1);
             } else {
                 out(&descriptors[CURRENT_OS_INDEX]);
                 descriptors[CURRENT_OS_INDEX].owned = true;
                 descriptors[CURRENT_OS_INDEX].overflow = false;
-                mpfc_write_status(1);
             }
             
             CURRENT_OS_INDEX = next_index();
