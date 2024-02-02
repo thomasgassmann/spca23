@@ -25,6 +25,9 @@ typedef struct internal_t {
 #define IS_MAX_EXP(exp) (exp == MAX_EXP)
 #define MANTISSA_MASK ((1 << FRAC_BITS) - 1)
 
+void shift_right_mantissa(internal_t *value, int amount);
+float_t to_ieee754(internal_t value);
+
 bool is_zero(float_t f) {
   return f.mantissa == 0 && f.exponent == 0;
 } 
@@ -124,9 +127,6 @@ float_t fp_negate(float_t a) {
   return a;
 }
 
-void shift_right_mantissa(internal_t *value, int amount);
-float_t to_ieee754(internal_t value);
-
 void postnormalize(internal_t *value) {
   if ((value->mantissa & MANTISSA_MASK) == 0) {
     // we have an overflow
@@ -134,6 +134,7 @@ void postnormalize(internal_t *value) {
   }
 }
 
+// shifts right and rounds as necessary
 void shift_right_mantissa(internal_t *value, int amount) {
   value->exponent += amount;
   if (amount >= 64) {
@@ -147,18 +148,16 @@ void shift_right_mantissa(internal_t *value, int amount) {
   uint64_t sticky_mask = ((uint64_t)(1) << (amount - 1)) - 1;
   uint64_t sticky_bits = current_mantissa & sticky_mask;
   uint64_t sticky_bit = !!sticky_bits;
-  if (guard_bit && round_bit && !sticky_bit) {
-    // round to even
+  if ((guard_bit && round_bit && !sticky_bit) || (round_bit && sticky_bit)) {
+    // round to even (first case), round up (second case)
     value->mantissa >>= amount;
-    value->mantissa++; // this might overflow again, need to postnormalize 
-    postnormalize(value);
-  } else if (round_bit && sticky_bit) {
-    // round up
-    value->mantissa >>= amount;
-    value->mantissa++; // this might overflow again, need to postnormalize
+    // this might overflow again, need to postnormalize
+    // if we're really unlucky, this can make make a normalized
+    // number out of a denormalized number
+    value->mantissa++;
     postnormalize(value);
   } else {
-    // we can just shift things out
+    // we can just shift things out, implicitly round down
     value->mantissa >>= amount;
   }
 }
@@ -365,7 +364,9 @@ internal_t add(internal_t a, internal_t b) {
   int diff = a.exponent - b.exponent;
   
   internal_t result = {a.sign, 0, 0, b.exponent, 0};
-  if (diff  > 64 - FRAC_BITS - 1) {
+  if (diff > 64 - FRAC_BITS - 1) {
+    // b is too insignificant, the result is going to be a
+    // (works because of the assumption above)
     result.exponent = a.exponent;
     result.mantissa = a.mantissa;
     return result;
@@ -380,16 +381,10 @@ internal_t add(internal_t a, internal_t b) {
     } else {
       result.mantissa = first - shifted;
     }
+
+    result.sign = a.sign == 1 ? (first > shifted) : (first < shifted);
   } else {
     result.mantissa = first + shifted;
-  }
-    
-  if (a.sign != b.sign) {
-    if (a.sign == 1) {
-      result.sign = first > shifted;
-    } else {
-      result.sign = first < shifted;
-    }
   }
   
   return result;
@@ -397,14 +392,6 @@ internal_t add(internal_t a, internal_t b) {
 
 /* d) Add two float_t numbers, return the result */
 float_t fp_add(float_t a, float_t b) {
-  // TIP: Refer to the lecture slides about floating point numbers to implement
-  // this operation.  You may also want to implement functions for
-  // denormalization, normalization, round_even to implement this operation.
-  //
-  // Remember that the mantissa in floating point numbers is a fraction and
-  // hence leading and trailing zeroes have different semantics than for normal
-  // numbers.  Also note that you can't use floating point addition to add
-  // mantissas.
   internal_t pa = from_ieee754(a);
   internal_t pb = from_ieee754(b);
   
@@ -442,10 +429,6 @@ internal_t mult(internal_t a, internal_t b) {
 
 /* e) Multiply two float_t numbers, return the result */
 float_t fp_mul(float_t a, float_t b) {
-  // TIP:  Just like in the ``Addition`` operation, mantissa here is the
-  // fraction.  You can't use floating point operations to multiply mentisa's.
-  // Don't worry about all the corner cases in the beginning, you can extend
-  // your solution to incorporate all corner cases later.
   internal_t pa = from_ieee754(a);
   internal_t pb = from_ieee754(b);
   
